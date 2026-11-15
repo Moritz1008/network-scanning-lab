@@ -1,0 +1,66 @@
+# Network Scanning lab environment
+#
+#   docker compose up -d --build            # attacker only
+#   docker compose --profile lab3 up -d     # attacker + targets of lab 3
+#   docker compose exec attacker bash       # open a shell
+#   docker compose --profile "*" down       # stop everything
+#
+# One shared attacker container for all labs. Each lab adds its targets
+# under its own profile (lab1, lab2, lab3), so only the targets of the
+# current lab are running.
+
+networks:
+  lab:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd00:6:6::/64
+
+services:
+  # ---------------------------------------------------------------- attacker
+  attacker:
+    build: ./attacker
+    hostname: attacker
+    cap_add: [NET_RAW, NET_ADMIN]   # SYN scans, ZMap, packet capture
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./work:/work                # captures and scan results end up on the host
+    networks: [lab]
+
+  # ------------------------------------------------- lab 1: fundamentals
+  # Add the targets for lab 1 here, each with `profiles: [lab1]`. Example:
+  #
+  # web:
+  #   image: nginx:alpine
+  #   profiles: [lab1]
+  #   networks: [lab]
+
+  # --------------------------------------------- lab 2: internet-scale
+  # Add the targets for lab 2 here, each with `profiles: [lab2]`.
+
+  # -------------------------------------------------------- lab 3: IPv6
+  # Listens on IPv6 only. The fixed address has a random-looking interface
+  # ID so it cannot be guessed (Docker would otherwise assign ::2, ::3, ...).
+  v6-target:
+    image: alpine/socat
+    profiles: [lab3]
+    command:
+      - "TCP6-LISTEN:31337,fork,reuseaddr,ipv6only=1"
+      - "SYSTEM:echo FLAG{h3ll0_ff02_1}"
+    networks:
+      lab:
+        ipv6_address: fd00:6:6::c0f:fee:1337:42
+
+  v6-decoy:
+    image: nginx:alpine
+    profiles: [lab3]
+    networks: [lab]
+
+  v6-fridge:
+    image: nginx:alpine
+    profiles: [lab3]
+    volumes:
+      - ./lab3-ipv6/fridge/index.html:/usr/share/nginx/html/index.html:ro
+    networks: [lab]
