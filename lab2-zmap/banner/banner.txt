@@ -1,0 +1,3 @@
+SSH-2.0-LabSSH_1.0
+FLAG{a_port_is_not_a_protocol}
+Maintenance handover key: northstar-maintenance-42
