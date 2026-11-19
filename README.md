@@ -27,7 +27,7 @@ Each lab has its own targets, started with a profile:
 
 | Lab | Topic | Start |
 | --- | --- | --- |
-| 1 | Fundamentals (nmap, Wireshark) | `docker compose --profile lab1 up -d` |
+| 1 | Fundamentals (nmap, Wireshark) ([task](lab1/README.md)) | `docker compose --profile lab1 up -d` |
 | 2 | Internet-scale scanning (ZMap, Shodan) | `docker compose --profile lab2 up -d` |
 | 3 | IPv6 ([task](lab3-ipv6/README.md)) | `docker compose --profile lab3 up -d` |
 
