@@ -1,0 +1,250 @@
+# Network Scanning lab environment
+#
+#   docker compose up -d --build            # attacker only
+#   docker compose --profile lab2 up -d --build --wait  # ZMap lab
+#   docker compose --profile lab3 up -d     # attacker + targets of lab 3
+#   docker compose exec attacker bash       # open a shell
+#   docker compose --profile "*" down       # stop everything
+#
+# One shared attacker container for all labs. Each lab adds its targets
+# under its own profile (lab1, lab2, lab3), so only the targets of the
+# current lab are running.
+
+networks:
+  lab:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd00:6:6::/64
+
+
+
+services:
+  # ---------------------------------------------------------------- attacker
+  attacker:
+    build: ./attacker
+    hostname: attacker
+    cap_add: [NET_RAW, NET_ADMIN]   # SYN scans, ZMap, packet capture
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./work:/work                # captures and scan results end up on the host
+      - ./lab2-zmap/material:/opt/lab2:ro
+    networks: [lab]
+
+
+
+  # ------------------------------------------------- lab 1: fundamentals
+
+  # Stage 1
+  thermostat:
+    build: ./lab1/targets
+    hostname: thermostat
+    profiles: [lab1]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # so the beacon reaches the host on Linux Docker too
+    environment:
+      FLAG1: "FLAG{passive_beacon_sniffed}"
+    command:
+      - sh
+      - -c
+      - |
+        msg="CoolCorp ThermoLink TH-700 :: telemetry uplink\r\ndevice=thermostat-07 site=cold-storage-DE firmware=1.4.2 status=ONLINE\r\nsetpoint=-18C compressor=running door=closed\r\nmaint-token=$$FLAG1\r\n"
+        echo "[beacon] implant live, leaking token to host + broadcast every 3s"
+        while true; do
+          printf "$$msg" | socat -u - UDP-SENDTO:host.docker.internal:31415 2>/dev/null
+          printf "$$msg" | socat -u - UDP-DATAGRAM:172.30.0.255:31415,broadcast 2>/dev/null
+          sleep 3
+        done
+    networks: [lab]
+
+  # Stages 2-4
+  coolctl-maint:
+    build: ./lab1/targets
+    hostname: coolctl-maint
+    profiles: [lab1]
+    environment:
+      FLAG1: "FLAG{passive_beacon_sniffed}"
+      FLAG2: "FLAG{alive_hosts_mapped}"
+      FLAG3: "FLAG{banner_version_leak}"
+      FLAG4: "FLAG{idle_printer_pivot_31337}"
+      HIDDEN_PORT: "31337"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.20
+    command:
+      - sh
+      - -c
+      - |
+        # Stage 2 - maintenance access (needs FLAG1 from the beacon)
+        cat > /h2.sh <<'EOF'
+        printf '=== CoolCtl maintenance access (jump host) ===\r\nAuthentication required.\r\nEnter maintenance token: '
+        read tok; tok=$$(printf '%s' "$$tok" | tr -d '\r\n')
+        if [ "$$tok" = "$$FLAG1" ]; then
+          printf '\r\nToken accepted. Welcome, technician.\r\nSTAGE 2 FLAG: %s\r\n\r\n' "$$FLAG2"
+          printf 'Mission: this maintenance host runs more services than you have seen.\r\n'
+          printf 'Scan it FULLY (-p-), find the hidden CoolCtl console,\r\n'
+          printf 'determine its version with -sV, then connect to it.\r\n'
+        else
+          printf '\r\nAccess denied. This token comes from the thermostat telemetry (Stage 1).\r\n'
+        fi
+        EOF
+        # Stage 3 - CoolCtl console (banner for -sV; needs FLAG2)
+        cat > /h3.sh <<'EOF'
+        printf 'CoolCtl-Core Maintenance Console v4.8.1 (build 48871) ready\r\nEnter maintenance token: '
+        read tok; tok=$$(printf '%s' "$$tok" | tr -d '\r\n')
+        if [ "$$tok" = "$$FLAG2" ]; then
+          printf '\r\nConsole unlocked.\r\nSTAGE 3 FLAG: %s\r\n\r\n' "$$FLAG3"
+          printf '=== Situation report ===\r\n'
+          printf 'Controller coolctl-core is walled off by a firewall (direct scan: filtered).\r\n'
+          printf 'It only trusts the old network printer coolcorp-printer (JetDirect).\r\n'
+          printf 'Use the printer as a ZOMBIE for an idle scan (-sI) against the controller.\r\n'
+          printf 'The service you are after is in port range 31330-31345.\r\n'
+          printf 'Report the open port to the jump host (port 9000) as  %s:<port>\r\n' "$$FLAG3"
+        else
+          printf '\r\nWrong token. You need the clearance from Stage 2.\r\n'
+        fi
+        EOF
+        # Stage 4 - IR report endpoint (needs FLAG3 + the idle-scanned port)
+        cat > /h4.sh <<'EOF'
+        printf '=== CoolCorp Incident-Response Console ===\r\nReport the open controller port in the format <FLAG3>:<port>\r\n> '
+        read raw; raw=$$(printf '%s' "$$raw" | tr -d '\r\n')
+        tok=$${raw%:*}; port=$${raw##*:}
+        if [ "$$tok" != "$$FLAG3" ]; then
+          printf '\r\nWrong token. Solve Stage 3 (CoolCtl console) first.\r\n'
+        elif [ "$$port" != "$$HIDDEN_PORT" ]; then
+          printf '\r\nToken ok, but port %s is not open on the controller.\r\nRun the idle scan through the printer correctly.\r\n' "$$port"
+        else
+          printf '\r\nCorrect. Pivot reconstructed, attack path documented.\r\nFINAL FLAG: %s\r\n\r\nThat completes Part I (Scanning Fundamentals). GG.\r\n' "$$FLAG4"
+        fi
+        EOF
+        echo "[maint] stages 2/3/4 on :2323 :1337 :9000"
+        socat TCP-LISTEN:2323,reuseaddr,fork EXEC:"sh /h2.sh" &
+        socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"sh /h3.sh" &
+        socat TCP-LISTEN:9000,reuseaddr,fork EXEC:"sh /h4.sh" &
+        wait
+
+ 
+  coolcorp-printer:
+    build: ./lab1/targets
+    hostname: coolcorp-printer
+    profiles: [lab1]
+    cap_add: [NET_RAW, NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - "iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP; exec python3 /opt/printer_zombie.py"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.30
+
+
+  coolctl-core:
+    build: ./lab1/targets
+    hostname: coolctl-core
+    profiles: [lab1]
+    cap_add: [NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - |
+        iptables -A INPUT -s 172.30.0.30 -p tcp --dport 31337 -j ACCEPT
+        iptables -A INPUT -p tcp -j DROP
+        echo "[controller] CoolCtl-Core on :31337 (printer-only firewall)"
+        exec socat TCP-LISTEN:31337,reuseaddr,fork SYSTEM:"printf 'CoolCtl-Core v2.1 :: refrigeration control bus\r\nACCESS RESTRICTED - trusted maintenance peers only.\r\n'"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.40
+
+  # Decoys so host discovery (-sn) returns a realistic set of live hosts.
+  decoy-web1:
+    image: nginx:alpine
+    hostname: hvac-dashboard
+    profiles: [lab1]
+    networks: [lab]
+
+  decoy-web2:
+    image: nginx:alpine
+    hostname: backup-nas
+    profiles: [lab1]
+    networks: [lab]
+
+
+
+  # --------------------------------------------- lab 2: internet-scale
+  # Fixed addresses make the fictional historical index reproducible.
+  # No ports are published on the host. Inspect these from the attacker.
+  zmap-portal:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/portal/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10
+
+  # A banner emulator, not a full SSH server. Port number != protocol.
+  zmap-banner:
+    image: alpine/socat
+    profiles: [lab2]
+    command:
+      - "TCP4-LISTEN:80,fork,reuseaddr"
+      - "SYSTEM:cat /etc/northstar/banner.txt"
+    volumes:
+      - ./lab2-zmap/banner/banner.txt:/etc/northstar/banner.txt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -w 1 127.0.0.1 80 | grep -q '^SSH-2.0-LabSSH_1.0'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.20
+
+  zmap-status:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/status/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./lab2-zmap/status/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.30
+
+
+
+  # -------------------------------------------------------- lab 3: IPv6
+  # Listens on IPv6 only. The fixed address has a random-looking interface
+  # ID so it cannot be guessed (Docker would otherwise assign ::2, ::3, ...).
+  v6-target:
+    image: alpine/socat
+    profiles: [lab3]
+    command:
+      - "TCP6-LISTEN:31337,fork,reuseaddr,ipv6only=1"
+      - "SYSTEM:echo FLAG{h3ll0_ff02_1}"
+    networks:
+      lab:
+        ipv6_address: fd00:6:6::c0f:fee:1337:42
+
+  v6-decoy:
+    image: nginx:alpine
+    profiles: [lab3]
+    networks: [lab]
+
+  v6-fridge:
+    image: nginx:alpine
+    profiles: [lab3]
+    volumes:
+      - ./lab3-ipv6/fridge/index.html:/usr/share/nginx/html/index.html:ro
+    networks: [lab]
