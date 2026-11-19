@@ -1,6 +1,7 @@
 # Network Scanning lab environment
 #
 #   docker compose up -d --build            # attacker only
+#   docker compose --profile lab2 up -d --build --wait  # ZMap lab
 #   docker compose --profile lab3 up -d     # attacker + targets of lab 3
 #   docker compose exec attacker bash       # open a shell
 #   docker compose --profile "*" down       # stop everything
@@ -27,6 +28,7 @@ services:
     tty: true
     volumes:
       - ./work:/work                # captures and scan results end up on the host
+      - ./lab2-zmap/material:/opt/lab2:ro
     networks: [lab]
 
   # ------------------------------------------------- lab 1: fundamentals
@@ -165,7 +167,54 @@ services:
     networks: [lab]
 
   # --------------------------------------------- lab 2: internet-scale
-  # Add the targets for lab 2 here, each with `profiles: [lab2]`.
+  # Fixed addresses make the fictional historical index reproducible.
+  # No ports are published on the host. Inspect these from the attacker.
+  zmap-portal:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/portal/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10
+
+  # A banner emulator, not a full SSH server. Port number != protocol.
+  zmap-banner:
+    image: alpine/socat
+    profiles: [lab2]
+    command:
+      - "TCP4-LISTEN:80,fork,reuseaddr"
+      - "SYSTEM:cat /etc/northstar/banner.txt"
+    volumes:
+      - ./lab2-zmap/banner/banner.txt:/etc/northstar/banner.txt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -w 1 127.0.0.1 80 | grep -q '^SSH-2.0-LabSSH_1.0'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.20
+
+  zmap-status:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/status/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./lab2-zmap/status/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.30
 
   # -------------------------------------------------------- lab 3: IPv6
   # Listens on IPv6 only. The fixed address has a random-looking interface
