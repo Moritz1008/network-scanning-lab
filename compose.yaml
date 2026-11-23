@@ -18,7 +18,33 @@ networks:
         - subnet: 172.30.0.0/24
         - subnet: fd00:6:6::/64
 
+  # Lab 3: CoolCorp HQ internal network. IPv6-only, no Docker uplink
+  # (internal), reachable only through v6-router. Docker's own gateway is
+  # moved to an unguessable address so fd00:c::1 is free for the router.
+  corp:
+    internal: true
+    enable_ipv4: false
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:c::/64
+          gateway: fd00:c::ffff:ffff:ffff:fffe
 
+
+# Common settings for hosts in the lab 3 corp network: built from the base
+# image, whose entrypoint adds the route back to the outside via v6-router.
+x-corp-host: &corp-host
+  build: ./lab3-ipv6/base
+  profiles: [lab3]
+  depends_on: [v6-router]
+  cap_add: [NET_ADMIN]
+
+# Lab 3 IoT devices: same as corp hosts, but one shared IoT image.
+x-iot-device: &iot-device
+  <<: *corp-host
+  build:
+    context: ./lab3-ipv6
+    dockerfile: iot/Dockerfile
 
 services:
   # ---------------------------------------------------------------- attacker
@@ -227,12 +253,26 @@ services:
   # -------------------------------------------------------- lab 3: IPv6
   # Listens on IPv6 only. The fixed address has a random-looking interface
   # ID so it cannot be guessed (Docker would otherwise assign ::2, ::3, ...).
+  # Stage 1: the banner gives the flag plus the way into the corp network.
   v6-target:
     image: alpine/socat
+    hostname: hq-gate
     profiles: [lab3]
+    environment:
+      FLAG1: "FLAG{h3ll0_ff02_1}"
+    entrypoint: [sh, -c]
     command:
-      - "TCP6-LISTEN:31337,fork,reuseaddr,ipv6only=1"
-      - "SYSTEM:echo FLAG{h3ll0_ff02_1}"
+      - |
+        cat > /tmp/banner <<EOF
+        === CoolCorp HQ :: visitor gateway ===
+        STAGE 1 FLAG: $$FLAG1
+
+        Welcome, contractor. The HQ network is not on this link:
+          corp prefix : fd00:c::/64
+          gateway     : fd00:6:6::fe  (coolcorp-edge)
+        Your machine has no route there yet. Add one, then go find the hosts.
+        EOF
+        exec socat TCP6-LISTEN:31337,fork,reuseaddr,ipv6only=1 SYSTEM:"cat /tmp/banner"
     networks:
       lab:
         ipv6_address: fd00:6:6::c0f:fee:1337:42
@@ -242,9 +282,225 @@ services:
     profiles: [lab3]
     networks: [lab]
 
-  v6-fridge:
-    image: nginx:alpine
+  # Edge router between outside (lab) and corp. Forwards IPv6 unicast only.
+  # Stage 6: admin interface on :8080, firewalled on IPv4 only.
+  v6-router:
+    build: ./lab3-ipv6/router
+    hostname: coolcorp-edge
     profiles: [lab3]
+    cap_add: [NET_ADMIN]
+    environment:
+      FLAG6: "FLAG{dual_stack_half_firewalled}"
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+      net.ipv4.ip_forward: 0
+    networks:
+      lab:
+        ipv4_address: 172.30.0.254
+        ipv6_address: fd00:6:6::fe
+      corp:
+        ipv6_address: fd00:c::1
+
+  # Stage 3: mail server (low-byte / service-port pattern)
+  v6-mail:
+    <<: *corp-host
+    hostname: mail
+    command: [banner, "25", '220 mail.corp.lab ESMTP CoolCorp Mailgate ready\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::25
+
+  # Stage 3: intranet web server (service-port pattern). Its page leaks one
+  # address of the stage 4 pool.
+  v6-www:
+    <<: *corp-host
+    hostname: www
+    command: [python3, -m, http.server, "80", --bind, "::", --directory, /srv/www]
     volumes:
-      - ./lab3-ipv6/fridge/index.html:/usr/share/nginx/html/index.html:ro
-    networks: [lab]
+      - ./lab3-ipv6/www/index.html:/srv/www/index.html:ro
+    networks:
+      corp:
+        ipv6_address: fd00:c::80
+
+  # Stage 3: the "unusual" host (hex word pattern). Flag in the banner.
+  v6-cafe:
+    <<: *corp-host
+    hostname: barista
+    environment:
+      FLAG3: "FLAG{h3x_w0rds_l1k3_cafe}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 8888 "BaristaNet 2000 coffee telemetry :: beans=low milk=ok\r\nSTAGE 3 FLAG: $$FLAG3\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::cafe
+
+  # Stage 4: sequential DHCPv6-style pool fd00:c::1020 - ::1025.
+  # ::1023 is leaked by the intranet page, the flag is on ::1025.
+  v6-pool-1020:
+    <<: *corp-host
+    hostname: ws-1020
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1020
+
+  v6-pool-1021:
+    <<: *corp-host
+    hostname: ws-1021
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1021
+
+  v6-pool-1022:
+    <<: *corp-host
+    hostname: ws-1022
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1022
+
+  v6-pool-1023:
+    <<: *corp-host
+    hostname: kiosk-lobby
+    command: [banner, "80", 'HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\nkiosk-lobby: meeting room display. My address: fd00:c::1023. Nothing to see here.\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1023
+
+  v6-pool-1024:
+    <<: *corp-host
+    hostname: ws-1024
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1024
+
+  v6-pool-1025:
+    <<: *corp-host
+    hostname: print-hq
+    environment:
+      FLAG4: "FLAG{dhcpv6_p00l_n31ghb0urs}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 9100 "@PJL INFO ID\r\nCoolCorp PrintHQ 4200\r\nSTAGE 4 FLAG: $$FLAG4\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::1025
+
+  # Stage 5: DNS server in the outside network. Reverse zone of fd00:c::/64
+  # contains a host that has no forward record.
+  v6-dns:
+    build: ./lab3-ipv6/dns
+    hostname: ns
+    profiles: [lab3]
+    networks:
+      lab:
+        ipv6_address: fd00:6:6::53
+
+  # Stage 5: host that exists only as a PTR record (random interface ID).
+  v6-backup:
+    <<: *corp-host
+    hostname: legacy-backup
+    environment:
+      FLAG5: "FLAG{ip6_arpa_kn0ws_all}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 873 "@RSYNCD: 31.0\nlegacy-backup: nightly snapshots of HQ\nSTAGE 5 FLAG: $$FLAG5\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::7a3e:91b2:4c5d:e816
+
+
+  # Stage 7: IoT batch, Raspberry Pi OUI 28:cd:c1, NIC serials 00:00:10-1f.
+  # SLAAC/EUI-64: MAC 28:cd:c1:00:00:xx -> fd00:c::2acd:c1ff:fe00:xx
+  # (Docker does not do SLAAC, so MAC and address are both set here.)
+  v6-iot-mqtt:
+    <<: *iot-device
+    hostname: sensorhub
+    environment:
+      FLAG_MQTT: "FLAG{retained_mqtt_n0_auth}"
+    command: [/opt/iot/start-mqtt.sh]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:13"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:13
+
+  v6-iot-coap:
+    <<: *iot-device
+    hostname: doorsensor
+    environment:
+      FLAG_COAP: "FLAG{coap_well_known_core}"
+    command: [python3, /opt/iot/coap_server.py]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:17"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:17
+
+  v6-iot-modbus:
+    <<: *iot-device
+    hostname: coolctl-core-hq
+    environment:
+      FLAG_MODBUS: "FLAG{modbus_h0ld1ng_r3g1sters}"
+    command: [python3, /opt/iot/modbus_server.py]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:1a"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:1a
+
+  # CoolCtl 3000 (the former v6-fridge): HTTP basic auth + telnet, both
+  # admin:admin. Also the pivot for stage 8 (shell with ping, nc, ip).
+  v6-fridge:
+    <<: *iot-device
+    hostname: coolctl3000
+    environment:
+      FLAG_LOGIN: "FLAG{admin_admin_still_works}"
+    command: [/opt/iot/start-coolctl.sh]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:1d"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:1d
+
+  # Stage 8 (bonus): internal hosts with random interface IDs. Not in DNS, no
+  # route to the outside network: reachable only from inside corp, e.g. via
+  # the CoolCtl 3000 shell. Found with ping -6 ff02::1 on the corp link.
+  v6-int-master:
+    <<: *corp-host
+    hostname: coolctl-master
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+      FLAG8: "FLAG{p1v0t_and_ff02_1_again}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 4840 "CoolCtl Master Controller (OPC UA gateway) :: all HQ cold rooms\r\nFINAL FLAG: $$FLAG8\r\nThat completes lab 3. GG.\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::5e1f:9a4b:2d7c:83e1
+
+  v6-int-hist:
+    <<: *corp-host
+    hostname: historian
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+    command: [banner, "5432", 'historian: temperature archive (PostgreSQL 15). Ask coolctl-master for live data.\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::b2e4:17c9:6a03:f58d
+
+  v6-int-eng:
+    <<: *corp-host
+    hostname: eng-ws
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 eng-ws (engineering workstation)\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::91d3:4f6e:c2a8:b77

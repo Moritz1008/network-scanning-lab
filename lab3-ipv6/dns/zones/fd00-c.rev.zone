@@ -1,0 +1,10 @@
+; Reverse zone for fd00:c::/64 (lab 3, stage 5).
+; legacy-backup has NO forward record: it can only be found by walking ip6.arpa.
+$ORIGIN 0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa.
+$TTL 300
+@  IN SOA ns.corp.lab. hostmaster.corp.lab. ( 2026112201 3600 600 86400 300 )
+   IN NS  ns.corp.lab.
+1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa. IN PTR gw.corp.lab.
+5.2.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa. IN PTR mail.corp.lab.
+0.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa. IN PTR www.corp.lab.
+6.1.8.e.d.5.c.4.2.b.1.9.e.3.a.7.0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa. IN PTR legacy-backup.corp.lab.

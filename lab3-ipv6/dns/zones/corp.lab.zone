@@ -1,0 +1,11 @@
+; Forward zone of CoolCorp HQ (lab 3). Only the "official" hosts are here.
+$ORIGIN corp.lab.
+$TTL 300
+@       IN SOA  ns.corp.lab. hostmaster.corp.lab. ( 2026112201 3600 600 86400 300 )
+        IN NS   ns.corp.lab.
+        IN MX   10 mail.corp.lab.
+ns      IN AAAA fd00:6:6::53
+gw      IN AAAA fd00:c::1
+mail    IN AAAA fd00:c::25
+www     IN AAAA fd00:c::80
+intranet IN CNAME www
