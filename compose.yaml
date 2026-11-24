@@ -254,7 +254,7 @@ services:
   # Listens on IPv6 only. The fixed address has a random-looking interface
   # ID so it cannot be guessed (Docker would otherwise assign ::2, ::3, ...).
   # Stage 1: the banner gives the flag plus the way into the corp network.
-  v6-target:
+  hq-gate: # target
     image: alpine/socat
     hostname: hq-gate
     profiles: [lab3]
@@ -277,8 +277,9 @@ services:
       lab:
         ipv6_address: fd00:6:6::c0f:fee:1337:42
 
-  v6-decoy:
+  hq-web: # decoy
     image: nginx:alpine
+    hostname: hq-web
     profiles: [lab3]
     networks: [lab]
 
