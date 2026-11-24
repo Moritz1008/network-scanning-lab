@@ -7,7 +7,7 @@ your own machine; nothing is sent to the university network or the Internet.
 ## Requirements
 
 Bring a laptop with the following. Set it up **before the session**: the
-build downloads images and packages and takes a while on university Wi-Fi.
+build downloads images and packages, this may take a while.
 
 | What | Details |
 | --- | --- |
@@ -19,10 +19,10 @@ build downloads images and packages and takes a while on university Wi-Fi.
 | Wireshark | For lab 1, installed on your **host**. Windows: keep the Npcap option "support loopback traffic capture" ticked during install. Linux: your user needs capture rights (group `wireshark`) or run it with `sudo`. |
 | Disk space | About 3 GB free (images about 1.5 GB plus build cache). |
 | RAM | 8 GB in the laptop is enough; Docker Desktop's default memory setting works. |
-| Admin rights | To install Docker and Wireshark. |
+| Shodan.io Account | For Lab 2, you can sign in here: https://www.shodan.io/ |
 
 Nothing else is needed: all scanners and clients run inside the attacker
-container. No accounts (e.g. Shodan) are required.
+container.
 
 **Check your setup** (with Internet, before the session):
 
