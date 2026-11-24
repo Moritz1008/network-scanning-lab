@@ -29,18 +29,19 @@ container.
 ```bash
 docker version                  # Linux: Server version 28 or newer
 docker compose version
-git clone <repo-url> && cd network-scanning-lab
+git clone <repo-url>
+cd network-scanning-lab
 docker compose build
-docker compose --profile lab3 up -d && docker compose --profile "*" down
+docker compose --profile lab3 up -d
+docker compose --profile "*" down
 ```
 
 If all commands finish without errors, you are ready.
 
 ## Quick start
+Execute this in a terminal inside of this directory
 
 ```bash
-git clone <repo-url>
-cd network-scanning-lab
 docker compose build            # do this before the session
 docker compose up -d
 docker compose exec attacker bash
