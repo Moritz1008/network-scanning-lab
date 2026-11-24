@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY router.sh /usr/local/bin/router.sh
-RUN chmod 755 /usr/local/bin/router.sh
+# Strip CR in case the file was checked out with Windows line endings.
+RUN sed -i 's/\r$//' /usr/local/bin/router.sh && chmod 755 /usr/local/bin/router.sh
 
 CMD ["/usr/local/bin/router.sh"]

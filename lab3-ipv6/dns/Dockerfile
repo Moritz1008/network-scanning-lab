@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends nsd \
 
 COPY nsd.conf /etc/nsd/nsd.conf
 COPY zones/ /etc/nsd/zones/
-RUN nsd-checkconf /etc/nsd/nsd.conf \
+# Strip CR in case the files were checked out with Windows line endings.
+RUN sed -i 's/\r$//' /etc/nsd/nsd.conf /etc/nsd/zones/*.zone \
+    && nsd-checkconf /etc/nsd/nsd.conf \
     && nsd-checkzone corp.lab /etc/nsd/zones/corp.lab.zone \
     && nsd-checkzone 0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa /etc/nsd/zones/fd00-c.rev.zone
 

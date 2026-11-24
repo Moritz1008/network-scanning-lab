@@ -18,7 +18,10 @@ COPY iot/coolctl_web.py /opt/iot/coolctl_web.py
 COPY iot/start-mqtt.sh iot/start-coolctl.sh /opt/iot/
 COPY iot/mosquitto.conf /etc/mosquitto/conf.d/lab.conf
 COPY fridge/index.html /opt/iot/index.html
-RUN chmod 755 /usr/local/bin/corp-entrypoint.sh /opt/iot/*.sh
+# Strip CR in case the files were checked out with Windows line endings.
+RUN sed -i 's/\r$//' /usr/local/bin/corp-entrypoint.sh /opt/iot/*.sh /opt/iot/*.py \
+      /etc/mosquitto/conf.d/lab.conf \
+    && chmod 755 /usr/local/bin/corp-entrypoint.sh /opt/iot/*.sh
 
 ENTRYPOINT ["/usr/local/bin/corp-entrypoint.sh"]
 

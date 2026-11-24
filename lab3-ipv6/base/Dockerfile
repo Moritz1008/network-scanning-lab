@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY corp-entrypoint.sh /usr/local/bin/corp-entrypoint.sh
 COPY banner.py /usr/local/bin/banner
-RUN chmod 755 /usr/local/bin/corp-entrypoint.sh /usr/local/bin/banner
+# Strip CR in case the files were checked out with Windows line endings.
+RUN sed -i 's/\r$//' /usr/local/bin/corp-entrypoint.sh /usr/local/bin/banner \
+    && chmod 755 /usr/local/bin/corp-entrypoint.sh /usr/local/bin/banner
 
 ENTRYPOINT ["/usr/local/bin/corp-entrypoint.sh"]
