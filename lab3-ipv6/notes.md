@@ -9,8 +9,7 @@ kandidaten-datei erstellen dauert ewig und fordert shell-scripting statt nmap-sk
 
 `targets-ipv6-map4to6`
 
-nmap -6 -sn --min-hostgroup 1024 --script targets-ipv6-wordlist \
-  --script-args 'newtargets,targets-ipv6-subnet={fd00:c::/64}'
+`nmap -6 -sn --min-hostgroup 1024 --script targets-ipv6-wordlist --script-args 'newtargets,targets-ipv6-subnet={fd00:c::/64}'`
 
 vielleicht nen hinweis für den curl für stage 4
 
