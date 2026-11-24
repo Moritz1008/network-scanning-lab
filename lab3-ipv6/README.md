@@ -8,7 +8,8 @@
 > often means you already have access.
 
 Every stage gives you a `FLAG{...}`. Stages 1 and 3–7 are the core of the lab
-(about 25 minutes). Stage 8 is a bonus for fast teams. Stuck? See
+(about 25 minutes). Stage 8 is a bonus for fast teams. </br>
+Stuck? See
 [HINTS.md](HINTS.md), one hint per stage.
 
 ## Start

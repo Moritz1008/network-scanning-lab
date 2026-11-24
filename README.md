@@ -19,7 +19,7 @@ build downloads images and packages, this may take a while.
 | Wireshark | For lab 1, installed on your **host**. Windows: keep the Npcap option "support loopback traffic capture" ticked during install. Linux: your user needs capture rights (group `wireshark`) or run it with `sudo`. |
 | Disk space | About 3 GB free (images about 1.5 GB plus build cache). |
 | RAM | 8 GB in the laptop is enough; Docker Desktop's default memory setting works. |
-| Shodan.io Account | For Lab 2, you can sign in here: https://www.shodan.io/ |
+| Shodan.io Account | Needed for Lab 2. You can sign up here: https://www.shodan.io/ |
 
 Nothing else is needed: all scanners and clients run inside the attacker
 container.
