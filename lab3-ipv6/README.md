@@ -7,8 +7,8 @@
 > asking DNS, and finally by looking at the IoT devices, where finding a device
 > often means you already have access.
 
-Every stage gives you a `FLAG{...}`. Stages 1 and 3–7 are the core of the lab
-(about 25 minutes). Stage 8 is a bonus for fast teams. </br>
+Every stage gives you a `FLAG{...}`. Stages 1–6 are the core of the lab
+(about 25 minutes). Stage 7 is a bonus for fast teams. </br>
 Stuck? See
 [HINTS.md](HINTS.md), one hint per stage.
 
@@ -33,16 +33,16 @@ flowchart LR
     subgraph outside["outside network: fd00:6:6::/64 (you start here)"]
         attacker["attacker<br/>(your shell)"]
         target["visitor gateway<br/>stage 1"]
-        dns["DNS server<br/>stage 5"]
+        dns["DNS server<br/>stage 4"]
     end
 
-    router{{"router / firewall<br/>multicast stops here<br/>stage 6"}}
+    router{{"router / firewall<br/>multicast stops here<br/>stage 5"}}
 
     subgraph corp["corp network: prefix revealed in stage 1"]
-        servers["servers<br/>stages 3–4"]
-        revhost["host only in reverse DNS<br/>stage 5"]
-        iot["IoT devices<br/>MQTT, CoAP, Modbus, login<br/>stage 7"]
-        internal["internal hosts<br/>stage 8 (bonus)"]
+        servers["servers<br/>stages 2–3"]
+        revhost["host only in reverse DNS<br/>stage 4"]
+        iot["IoT devices<br/>MQTT, CoAP, Modbus, login<br/>stage 6"]
+        internal["internal hosts<br/>stage 7 (bonus)"]
     end
 
     attacker --- target
@@ -60,14 +60,12 @@ flowchart LR
 | --- | --- | --- |
 | 0 | Try it the IPv4 way | why sweeping a /64 fails (warm-up, no flag) |
 | 1 | Find me if you can | multicast discovery (`ff02::1`), neighbour cache, IPv6-only service |
-| 3 | Think like the admin | guessable addresses: low-byte, service ports, hex words |
-| 4 | The address pool | sequential (DHCPv6-style) addresses: one hit, then the neighbours |
-| 5 | Ask the phone book | reverse DNS walk in `ip6.arpa` (NXDOMAIN vs. NOERROR) |
-| 6 | Two doors, one lock | dual-stack gap: filtered over IPv4, open over IPv6 |
-| 7 | Smart, not secure | find IoT devices via EUI-64 and vendor OUI, then MQTT, CoAP, Modbus and a default login with nmap NSE scripts (4 flags) |
-| 8 | Inside job (bonus) | pivot through an IoT device, then multicast discovery inside corp |
-
-(There is no stage 2: the recon stage was cut to keep the lab within about 25 minutes.)
+| 2 | Think like the admin | guessable addresses: low-byte, service ports, hex words |
+| 3 | The address pool | sequential (DHCPv6-style) addresses: one hit, then the neighbours |
+| 4 | Ask the phone book | reverse DNS walk in `ip6.arpa` (NXDOMAIN vs. NOERROR) |
+| 5 | Two doors, one lock | dual-stack gap: filtered over IPv4, open over IPv6 |
+| 6 | Smart, not secure | find IoT devices via EUI-64 and vendor OUI, then MQTT, CoAP, Modbus and a default login with nmap NSE scripts (4 flags) |
+| 7 | Inside job (bonus) | pivot through an IoT device, then multicast discovery inside corp |
 
 ### Two things you need all the time
 
@@ -90,7 +88,7 @@ nmap -sn 172.30.0.0/24
 ```
 
 That took about two seconds for 256 addresses. A /64 has 2^64 addresses.
-At the same speed, how long would `nmap -sn fd00:6:6::/64` take? (Don't run it.)
+You can try running `nmap -6 -sn fd00:6:6::/64`, it won't finish.
 For the rest of the lab you have to find addresses some other way.
 
 ## Stage 1 – Find me if you can
@@ -100,8 +98,8 @@ its address cannot be guessed. Find it and fetch the flag.
 
 1. Ask every host on the link to answer: `ping -6 -c2 ff02::1%eth0`.
    Then look at your neighbour cache: `ip -6 neigh`.
-2. Scan the hosts you found with `nmap -6`. Link-local addresses need the
-   interface: `fe80::…%eth0`. One port does not belong there.
+2. Scan the hosts you found with `nmap -6`. One port does not belong there.</br>
+   **Remember:** Link-local addresses need the interface: `fe80::…%eth0`.
 3. Fetch the flag: `nc -6 <address> <port>`
 
 **Leave your own laptop out.** One neighbour is your Docker host, i.e. your
@@ -120,7 +118,7 @@ ip -6 route add <corp prefix> via <gateway>
 
 Bonus: scan the same host via IPv4. What is different?
 
-## Stage 3 – Think like the admin
+## Stage 2 – Think like the admin
 
 Nobody types random 64-bit interface IDs by hand. Admins pick addresses they
 can remember: low numbers (`::1`, `::2`), the service port (`::25` for mail,
@@ -129,9 +127,9 @@ can remember: low numbers (`::1`, `::2`), the service port (`::25` for mail,
 **Goal:** build a list of such candidates in the corp prefix, find the live
 hosts, scan them. One of them is not a server at all; its banner has the flag.
 
-## Stage 4 – The address pool
+## Stage 3 – The address pool
 
-The intranet web server you found in stage 3 has more to say than its
+The intranet web server you found in stage 2 has more to say than its
 front page shows. Read it carefully: it leaks one address from the new
 DHCPv6 pool.
 
@@ -139,7 +137,7 @@ DHCPv6 pool.
 neighbours right next to the address you know. Find all of them; one of
 them has the flag.
 
-## Stage 5 – Ask the phone book
+## Stage 4 – Ask the phone book
 
 CoolCorp's DNS server is `fd00:6:6::53`. The forward zone `corp.lab` only
 lists the official hosts, and zone transfers are blocked. But every IPv6
@@ -159,23 +157,23 @@ dig @fd00:6:6::53 <nibble>.<…>.c.0.0.0.0.0.d.f.ip6.arpa PTR
 
 Shortcut once you have understood it: `atk6-dnsrevenum6`.
 
-## Stage 6 – Two doors, one lock
+## Stage 5 – Two doors, one lock
 
 The router between outside and corp has an admin interface. The admin
 blocked it in the firewall. In *a* firewall.
 
 **Goal:** compare `nmap -4` and `nmap -6` against the router's two outside
 addresses and read the admin page. It has the flag and something you need for
-stage 7.
+stage 6.
 
-## Stage 7 – Smart, not secure (4 flags)
+## Stage 6 – Smart, not secure (4 flags)
 
 A batch of IoT devices configures its addresses with SLAAC. Their interface ID
 is built from the MAC address (EUI-64): split the MAC in the middle, insert
 `ff:fe`, flip bit 0x02 of the first byte. Example:
 `b8:27:eb:12:34:56` → `ba27:ebff:fe12:3456`.
 
-**Goal:** use the clue from stage 6 and the vendor list in
+**Goal:** use the clue from stage 5 and the vendor list in
 `/usr/share/nmap/nmap-mac-prefixes` to compute the candidate addresses, find
 the devices, then talk to each of them in its own protocol. nmap has an NSE
 script for each one:
@@ -191,7 +189,7 @@ Remember UDP: `nmap -6 -sU -p5683 …`. For the brute-force scripts add
 `--script-args brute.firstonly=true`, otherwise they keep going after the
 first hit.
 
-## Stage 8 – Inside job (bonus)
+## Stage 7 – Inside job (bonus)
 
 Outside the corp network, `ff02::1` only reached the outside hosts. One of
 the IoT devices gives you a shell.

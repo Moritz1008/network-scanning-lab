@@ -1,4 +1,4 @@
-; Reverse zone for fd00:c::/64 (lab 3, stage 5).
+; Reverse zone for fd00:c::/64 (lab 3, stage 4).
 ; legacy-backup has NO forward record: it can only be found by walking ip6.arpa.
 $ORIGIN 0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa.
 $TTL 300

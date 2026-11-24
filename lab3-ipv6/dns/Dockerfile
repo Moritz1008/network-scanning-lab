@@ -1,4 +1,4 @@
-# CoolCorp HQ DNS server (lab 3, stage 5): authoritative for corp.lab and
+# CoolCorp HQ DNS server (lab 3, stage 4): authoritative for corp.lab and
 # the reverse zone of fd00:c::/64.
 FROM debian:bookworm-slim
 

@@ -2,7 +2,7 @@
 # Route the outside network (lab) through the CoolCorp router, then exec the
 # service. Needs cap_add NET_ADMIN. Override with OUTSIDE_NET / CORP_ROUTER.
 # NO_OUTSIDE_ROUTE=1 skips the route: the host then only talks to corp
-# (used for the internal hosts of stage 8, which need a pivot).
+# (used for the internal hosts of stage 7, which need a pivot).
 OUTSIDE_NET="${OUTSIDE_NET:-fd00:6:6::/64}"
 CORP_ROUTER="${CORP_ROUTER:-fd00:c::1}"
 

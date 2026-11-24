@@ -284,14 +284,14 @@ services:
     networks: [lab]
 
   # Edge router between outside (lab) and corp. Forwards IPv6 unicast only.
-  # Stage 6: admin interface on :8080, firewalled on IPv4 only.
+  # Stage 5: admin interface on :8080, firewalled on IPv4 only.
   v6-router:
     build: ./lab3-ipv6/router
     hostname: coolcorp-edge
     profiles: [lab3]
     cap_add: [NET_ADMIN]
     environment:
-      FLAG6: "FLAG{dual_stack_half_firewalled}"
+      FLAG5: "FLAG{dual_stack_half_firewalled}"
     sysctls:
       net.ipv6.conf.all.forwarding: 1
       net.ipv4.ip_forward: 0
@@ -302,7 +302,7 @@ services:
       corp:
         ipv6_address: fd00:c::1
 
-  # Stage 3: mail server (low-byte / service-port pattern)
+  # Stage 2: mail server (low-byte / service-port pattern)
   v6-mail:
     <<: *corp-host
     hostname: mail
@@ -311,8 +311,8 @@ services:
       corp:
         ipv6_address: fd00:c::25
 
-  # Stage 3: intranet web server (service-port pattern). Its page leaks one
-  # address of the stage 4 pool.
+  # Stage 2: intranet web server (service-port pattern). Its page leaks one
+  # address of the stage 3 pool.
   v6-www:
     <<: *corp-host
     hostname: www
@@ -323,21 +323,21 @@ services:
       corp:
         ipv6_address: fd00:c::80
 
-  # Stage 3: the "unusual" host (hex word pattern). Flag in the banner.
+  # Stage 2: the "unusual" host (hex word pattern). Flag in the banner.
   v6-cafe:
     <<: *corp-host
     hostname: barista
     environment:
-      FLAG3: "FLAG{h3x_w0rds_l1k3_cafe}"
+      FLAG2: "FLAG{h3x_w0rds_l1k3_cafe}"
     command:
       - sh
       - -c
-      - 'exec banner 8888 "BaristaNet 2000 coffee telemetry :: beans=low milk=ok\r\nSTAGE 3 FLAG: $$FLAG3\r\n"'
+      - 'exec banner 8888 "BaristaNet 2000 coffee telemetry :: beans=low milk=ok\r\nSTAGE 2 FLAG: $$FLAG2\r\n"'
     networks:
       corp:
         ipv6_address: fd00:c::cafe
 
-  # Stage 4: sequential DHCPv6-style pool fd00:c::1020 - ::1025.
+  # Stage 3: sequential DHCPv6-style pool fd00:c::1020 - ::1025.
   # ::1023 is leaked by the intranet page, the flag is on ::1025.
   v6-pool-1020:
     <<: *corp-host
@@ -383,16 +383,16 @@ services:
     <<: *corp-host
     hostname: print-hq
     environment:
-      FLAG4: "FLAG{dhcpv6_p00l_n31ghb0urs}"
+      FLAG3: "FLAG{dhcpv6_p00l_n31ghb0urs}"
     command:
       - sh
       - -c
-      - 'exec banner 9100 "@PJL INFO ID\r\nCoolCorp PrintHQ 4200\r\nSTAGE 4 FLAG: $$FLAG4\r\n"'
+      - 'exec banner 9100 "@PJL INFO ID\r\nCoolCorp PrintHQ 4200\r\nSTAGE 3 FLAG: $$FLAG3\r\n"'
     networks:
       corp:
         ipv6_address: fd00:c::1025
 
-  # Stage 5: DNS server in the outside network. Reverse zone of fd00:c::/64
+  # Stage 4: DNS server in the outside network. Reverse zone of fd00:c::/64
   # contains a host that has no forward record.
   v6-dns:
     build: ./lab3-ipv6/dns
@@ -402,22 +402,22 @@ services:
       lab:
         ipv6_address: fd00:6:6::53
 
-  # Stage 5: host that exists only as a PTR record (random interface ID).
+  # Stage 4: host that exists only as a PTR record (random interface ID).
   v6-backup:
     <<: *corp-host
     hostname: legacy-backup
     environment:
-      FLAG5: "FLAG{ip6_arpa_kn0ws_all}"
+      FLAG4: "FLAG{ip6_arpa_kn0ws_all}"
     command:
       - sh
       - -c
-      - 'exec banner 873 "@RSYNCD: 31.0\nlegacy-backup: nightly snapshots of HQ\nSTAGE 5 FLAG: $$FLAG5\n"'
+      - 'exec banner 873 "@RSYNCD: 31.0\nlegacy-backup: nightly snapshots of HQ\nSTAGE 4 FLAG: $$FLAG4\n"'
     networks:
       corp:
         ipv6_address: fd00:c::7a3e:91b2:4c5d:e816
 
 
-  # Stage 7: IoT batch, Raspberry Pi OUI 28:cd:c1, NIC serials 00:00:10-1f.
+  # Stage 6: IoT batch, Raspberry Pi OUI 28:cd:c1, NIC serials 00:00:10-1f.
   # SLAAC/EUI-64: MAC 28:cd:c1:00:00:xx -> fd00:c::2acd:c1ff:fe00:xx
   # (Docker does not do SLAAC, so MAC and address are both set here.)
   v6-iot-mqtt:
@@ -454,7 +454,7 @@ services:
         ipv6_address: fd00:c::2acd:c1ff:fe00:1a
 
   # CoolCtl 3000 (the former v6-fridge): HTTP basic auth + telnet, both
-  # admin:admin. Also the pivot for stage 8 (shell with ping, nc, ip).
+  # admin:admin. Also the pivot for stage 7 (shell with ping, nc, ip).
   v6-fridge:
     <<: *iot-device
     hostname: coolctl3000
@@ -466,7 +466,7 @@ services:
         mac_address: "28:cd:c1:00:00:1d"
         ipv6_address: fd00:c::2acd:c1ff:fe00:1d
 
-  # Stage 8 (bonus): internal hosts with random interface IDs. Not in DNS, no
+  # Stage 7 (bonus): internal hosts with random interface IDs. Not in DNS, no
   # route to the outside network: reachable only from inside corp, e.g. via
   # the CoolCtl 3000 shell. Found with ping -6 ff02::1 on the corp link.
   v6-int-master:
@@ -475,11 +475,11 @@ services:
     cap_add: []
     environment:
       NO_OUTSIDE_ROUTE: "1"
-      FLAG8: "FLAG{p1v0t_and_ff02_1_again}"
+      FLAG7: "FLAG{p1v0t_and_ff02_1_again}"
     command:
       - sh
       - -c
-      - 'exec banner 4840 "CoolCtl Master Controller (OPC UA gateway) :: all HQ cold rooms\r\nFINAL FLAG: $$FLAG8\r\nThat completes lab 3. GG.\r\n"'
+      - 'exec banner 4840 "CoolCtl Master Controller (OPC UA gateway) :: all HQ cold rooms\r\nFINAL FLAG: $$FLAG7\r\nThat completes lab 3. GG.\r\n"'
     networks:
       corp:
         ipv6_address: fd00:c::5e1f:9a4b:2d7c:83e1

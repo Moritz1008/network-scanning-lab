@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal Modbus/TCP server for lab 3, stage 7. No dependencies.
+"""Minimal Modbus/TCP server for lab 3, stage 6. No dependencies.
 
 Plays the CoolCorp cooling controller. Function codes:
   0x03/0x04 read holding/input registers

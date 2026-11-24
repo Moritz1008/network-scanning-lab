@@ -1,4 +1,4 @@
-# IoT devices of CoolCorp HQ (lab 3, stages 7 and 8). One image for all four
+# IoT devices of CoolCorp HQ (lab 3, stages 6 and 7). One image for all four
 # devices; the compose command picks the service. Build context: lab3-ipv6/
 FROM debian:bookworm-slim
 

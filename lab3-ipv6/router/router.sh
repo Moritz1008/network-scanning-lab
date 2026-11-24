@@ -12,14 +12,14 @@ ip6tables -A FORWARD -s ff00::/8 -j DROP
 # IPv4: the corp network is IPv6-only; never forward IPv4 at all.
 iptables -P FORWARD DROP
 
-# Stage 6 - dual-stack gap: the admin interface is firewalled on IPv4 ...
+# Stage 5 - dual-stack gap: the admin interface is firewalled on IPv4 ...
 iptables -A INPUT -p tcp --dport 8080 -j DROP
 # ... and the matching ip6tables rule was "forgotten". (Do not add it.)
-# Only the corp-facing address is closed, so stage 6 is solved from the
-# outside (fd00:6:6::fe vs 172.30.0.254) and not by accident in stage 3.
+# Only the corp-facing address is closed, so stage 5 is solved from the
+# outside (fd00:6:6::fe vs 172.30.0.254) and not by accident in stage 2.
 ip6tables -A INPUT -d fd00:c::1 -p tcp --dport 8080 -j DROP
 
-# Admin page, generated from FLAG6 so the flag stays in compose.yaml.
+# Admin page, generated from FLAG5 so the flag stays in compose.yaml.
 mkdir -p /srv/admin
 cat > /srv/admin/index.html <<HTML
 <!DOCTYPE html>
@@ -29,7 +29,7 @@ cat > /srv/admin/index.html <<HTML
     <!-- Fictional router for a training lab. -->
     <h1>coolcorp-edge :: admin</h1>
     <p>Firewall: IPv4 rules active. IPv6 rules: <i>todo</i></p>
-    <p><b>STAGE 6 FLAG: ${FLAG6}</b></p>
+    <p><b>STAGE 5 FLAG: ${FLAG5}</b></p>
     <h2>Change log</h2>
     <ul>
       <li>2026-11-03 admin interface blocked from outside (iptables)</li>

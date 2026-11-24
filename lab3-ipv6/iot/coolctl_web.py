@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CoolCtl 3000 web interface (lab 3, stage 7): HTTP basic auth, default
+"""CoolCtl 3000 web interface (lab 3, stage 6): HTTP basic auth, default
 credentials admin:admin. Serves /opt/iot/index.html with {{FLAG}} replaced
 by env FLAG_LOGIN after a successful login."""
 import base64
