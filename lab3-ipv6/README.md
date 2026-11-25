@@ -76,15 +76,19 @@ flowchart LR
 - **nmap has no dash ranges for IPv6** (`fd00:c::1-ff` does not work), but
   small CIDR blocks do. Each hex digit is 4 bits, so `/124` covers the last
   digit and `/120` the last two:
+
   ```bash
   nmap -6 -sn fd00:c::/120          # fd00:c::0 to fd00:c::ff
   nmap -6 -sn fd00:c::10/124        # fd00:c::10 to fd00:c::1f
   ```
-  For other candidate lists, put one address per line in a file and use
-  `-iL /work/cand.txt`.
 
+  You can do the same with a small loop:
   ```bash
   for i in $(seq 1 255); do printf 'fd00:c::%x\n' "$i"; done > /work/cand.txt
+  ```
+
+  For candidate lists like above, put one address per line in a file and use
+  ```bash
   nmap -6 -sn -iL /work/cand.txt
   ```
 
@@ -97,7 +101,7 @@ nmap -sn 172.30.0.0/24
 ```
 
 That took a few seconds for 256 addresses. A /64 has 2^64 addresses.
-You can try running `nmap -6 -sn fd00:6:6::/64`, it won't finish.
+You can try running `nmap -6 -sn fd00:6:6::/64`, but it won't finish.
 For the rest of the lab you have to find addresses some other way.
 Take note of your own laptop in the `namp` scan's output. Remember its MAC Address, so you don't scan your own device in the next stage.
 
@@ -106,13 +110,13 @@ Take note of your own laptop in the `namp` scan's output. Remember its MAC Addre
 One host in the outside network listens only on IPv6, on an unusual port, and
 its address cannot be guessed. Find it and fetch the flag.
 
-1. Ask every host on the link to answer: `ping -6 -c2 ff02::1%eth0`.
+1. Ask every host on the link to answer via IPv6 multicast ping (take a look at the slides for the magic address).
    Then look at your neighbour cache: `ip -6 neigh`.
 
     **Leave your own laptop out.** One neighbour is your Docker host, i.e. your
     own computer; scanning it shows your own services, not the lab. 
     (Two neighbours are marked `router`: your Docker host and a real router.
-    You can identify the Docker host via the MAC Address you saw in Stage 0.)
+    You can identify the Docker host via its hostname or the MAC Address you saw in Stage 0.)
 
 2. Scan the hosts you found with `nmap -6`. One port does not belong there.</br>
    **Remember:** Link-local addresses need the interface: `fe80::…%eth0`.
@@ -133,10 +137,10 @@ Nobody types random 64-bit interface IDs by hand. Admins pick addresses they
 can remember: low numbers (`::1`, `::2`), the service port (`::25` for mail,
 `::80` for web) or hex words (`::dead:beef`).
 
-**Goal:** build a list of such candidates in the corp prefix, find the live
+**Goal:** build a list of such candidates in the corp prefix (`fd00:c::/64`), find the live
 hosts, scan them. One of them is not a server at all; its banner has the flag.
 
-For the hex words, nmap brings its own wordlist (about 2600 words). The NSE
+For the hex words, nmap brings its own wordlist. The NSE
 script `targets-ipv6-wordlist` turns it into addresses in the prefix and adds
 them to the scan:
 
@@ -180,7 +184,7 @@ server says `NXDOMAIN`; if something exists further down, it says `NOERROR`.
 So you only follow the branches that exist:
 
 ```bash
-dig @fd00:6:6::53 <nibble>.<…>.c.0.0.0.0.0.d.f.ip6.arpa PTR
+dig @fd00:6:6::53 <nibble>.0.0.0.0.0.0.0.0.c.0.0.0.0.0.d.f.ip6.arpa PTR
 ```
 
 Shortcut once you have understood it: `atk6-dnsrevenum6`.
