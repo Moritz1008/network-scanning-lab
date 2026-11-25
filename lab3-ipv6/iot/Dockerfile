@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       mosquitto mosquitto-clients \
       openbsd-inetd inetutils-telnetd \
       iputils-ping netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
+      vim-tiny \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/vim.tiny /usr/local/bin/vim
 
 COPY base/corp-entrypoint.sh /usr/local/bin/corp-entrypoint.sh
 COPY iot/coap_server.py /opt/iot/coap_server.py

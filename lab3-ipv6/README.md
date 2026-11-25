@@ -229,7 +229,9 @@ account: `telnet <address>`.
 corp link? Compare with everything you have found so far. Some hosts were never
 reachable from outside. One of them has the final flag.
 
-Inside the device you only have `ping`, `nc` and `ip`. `nc -6 -zv -w1 <host> 1-10000`
+Inside the device you only have `ping`, `nc`, `ip` and `vim`. 
+
+**Hint:** `nc -6 -zv -w1 fd00:c::b2e4:17c9:6a03:f58d 1-10000 2>&1 | grep succeeded`
 is a small port scanner.
 
 ## Bonus – Talk to the machines (3 flags)
