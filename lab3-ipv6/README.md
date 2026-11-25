@@ -234,6 +234,29 @@ Inside the device you only have `ping`, `nc`, `ip` and `vim`.
 **Hint:** `nc -6 -zv -w1 fd00:c::b2e4:17c9:6a03:f58d 1-10000 2>&1 | grep succeeded`
 is a small port scanner.
 
+
+**Link-local or global answers?** A plain `ping -6 ff02::1%eth0` gets replies
+from link-local addresses (`fe80::…`), which you can't compare with the corp
+addresses you already know. Send the ping from your own corp address instead
+(`ip -6 addr` shows it):
+
+```bash
+ping -6 -c2 -I <your fd00:c:: address> ff02::1%eth0
+```
+
+Now the hosts answer from their `fd00:c::…` addresses. Why this works:
+
+- `ff02::1` has **link-local scope**: routers never forward it, so the ping
+  stays on the corp link whatever source address you use.
+- Every host answers to your source address and picks its own source address
+  with the same scope (RFC 6724). Your `fe80::` source gets `fe80::` replies;
+  your `fd00:c::` source gets `fd00:c::` replies.
+- Nothing leaves the link: your address and theirs are on the same link, so
+  the replies are single-hop as well.
+
+Skip your own address and `fd00:c::ffff:ffff:ffff:fffe` (Docker's gateway,
+i.e. your laptop).
+
 ## Bonus – Talk to the machines (3 flags)
 
 The other three IoT devices from stage 6 each speak their own protocol, and
