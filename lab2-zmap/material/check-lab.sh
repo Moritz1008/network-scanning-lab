@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Instructor preflight. Run inside attacker; reveals the expected targets.
+# Instructor preflight. Reveals the expected targets and all flags, so it is
+# not mounted into the attacker. Run from the project directory on the host:
+#   docker compose cp lab2-zmap/material/check-lab.sh attacker:/tmp/check-lab.sh
+#   docker compose exec attacker bash /tmp/check-lab.sh
 set -euo pipefail
 
 check_dir=$(mktemp -d /tmp/lab2-check.XXXXXX)

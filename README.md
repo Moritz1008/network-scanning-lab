@@ -15,6 +15,7 @@ your own machine; nothing is sent to the university network or the Internet.
 git clone <repo-url>
 cd network-scanning-lab
 docker compose build            # do this before the session
+docker compose --profile "*" pull --ignore-buildable   # target images, also before
 docker compose up -d
 docker compose exec attacker bash
 ```
@@ -28,7 +29,7 @@ Each lab has its own targets, started with a profile:
 | Lab | Topic | Start |
 | --- | --- | --- |
 | 1 | Fundamentals (nmap, Wireshark) | `docker compose --profile lab1 up -d` |
-| 2 | Internet-scale scanning (ZMap, Shodan) | `docker compose --profile lab2 up -d` |
+| 2 | Internet-scale scanning ([task](lab2-zmap/README.md)) | `docker compose --profile lab2 up -d --wait` |
 | 3 | IPv6 ([task](lab3-ipv6/README.md)) | `docker compose --profile lab3 up -d` |
 
 Stop everything:

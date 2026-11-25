@@ -28,7 +28,8 @@ services:
     tty: true
     volumes:
       - ./work:/work                # captures and scan results end up on the host
-      - ./lab2-zmap/material:/opt/lab2:ro
+      # Only the student material. The instructor check stays on the host.
+      - ./lab2-zmap/material/snapshot.json:/opt/lab2/snapshot.json:ro
     networks: [lab]
 
   # ------------------------------------------------- lab 1: fundamentals
