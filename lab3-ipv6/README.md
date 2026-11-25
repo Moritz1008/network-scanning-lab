@@ -72,8 +72,16 @@ flowchart LR
 - **Discover first, then scan ports.** `nmap -6 -sn` on a list of candidate
   addresses takes seconds. A port scan with `-Pn` on the same list waits for
   every address that does not exist and takes many minutes.
-- **nmap has no ranges for IPv6** (`fd00:c::1-ff` does not work). Write the
-  candidates into a file and use `-iL`:
+- **nmap has no dash ranges for IPv6** (`fd00:c::1-ff` does not work), but
+  small CIDR blocks do. Each hex digit is 4 bits, so `/124` covers the last
+  digit and `/120` the last two:
+  ```bash
+  nmap -6 -sn fd00:c::/120          # fd00:c::0 to fd00:c::ff
+  nmap -6 -sn fd00:c::10/124        # fd00:c::10 to fd00:c::1f
+  ```
+  For other candidate lists, put one address per line in a file and use
+  `-iL /work/cand.txt`.
+
   ```bash
   for i in $(seq 1 255); do printf 'fd00:c::%x\n' "$i"; done > /work/cand.txt
   nmap -6 -sn -iL /work/cand.txt
@@ -87,9 +95,10 @@ flowchart LR
 nmap -sn 172.30.0.0/24
 ```
 
-That took about two seconds for 256 addresses. A /64 has 2^64 addresses.
+That took a few seconds for 256 addresses. A /64 has 2^64 addresses.
 You can try running `nmap -6 -sn fd00:6:6::/64`, it won't finish.
 For the rest of the lab you have to find addresses some other way.
+Take note of your own laptop in the `namp` scan's output. Remember its MAC Address, so you don't scan your own device in the next stage.
 
 ## Stage 1 – Find me if you can
 
@@ -98,16 +107,15 @@ its address cannot be guessed. Find it and fetch the flag.
 
 1. Ask every host on the link to answer: `ping -6 -c2 ff02::1%eth0`.
    Then look at your neighbour cache: `ip -6 neigh`.
+
+    **Leave your own laptop out.** One neighbour is your Docker host, i.e. your
+    own computer; scanning it shows your own services, not the lab. 
+    (Two neighbours are marked `router`: your Docker host and a real router.
+    You can identify the Docker host via the MAC Address you saw in Stage 0.)
+
 2. Scan the hosts you found with `nmap -6`. One port does not belong there.</br>
    **Remember:** Link-local addresses need the interface: `fe80::…%eth0`.
 3. Fetch the flag: `nc -6 <address> <port>`
-
-**Leave your own laptop out.** One neighbour is your Docker host, i.e. your
-own computer; scanning it shows your own services, not the lab. It also owns
-`fd00:6:6::1`: run `ping -6 -c1 fd00:6:6::1`, then `ip -6 neigh` shows its
-MAC address, and you can skip the link-local address with the same MAC.
-(Two neighbours are marked `router`: your Docker host and a real router.
-Keep the real one in mind.)
 
 The banner also tells you where the corp network is and which router leads
 there. Your attacker has no route to it yet; add one:
@@ -127,10 +135,29 @@ can remember: low numbers (`::1`, `::2`), the service port (`::25` for mail,
 **Goal:** build a list of such candidates in the corp prefix, find the live
 hosts, scan them. One of them is not a server at all; its banner has the flag.
 
+For the hex words, nmap brings its own wordlist (about 2600 words). The NSE
+script `targets-ipv6-wordlist` turns it into addresses in the prefix and adds
+them to the scan:
+
+```bash
+nmap -6 -sn -n -PE --max-retries 1 --min-rate 300 \
+  --script targets-ipv6-wordlist \
+  --script-args 'newtargets,targets-ipv6-subnet={<corp prefix>}'
+```
+
+Almost none of these addresses exist, so the flags `-PE --max-retries 1
+--min-rate 300` keep nmap from waiting on each one. In the lab every host
+answers ping; on a real network you would add TCP probes (e.g. `-PS22,80,443`)
+and scan more slowly.
+
 ## Stage 3 – The address pool
 
-The intranet web server you found in stage 2 has more to say than its
-front page shows. Read it carefully: it leaks one address from the new
+Apart from the coffee machine, did you also find the intranet web server in stage 2?
+
+**Hint:**
+Use `curl http://[IPv6-address]` to read a web page.
+
+Read it carefully: it leaks one address from the new
 DHCPv6 pool.
 
 **Goal:** a server that hands out addresses one after the other leaves its
@@ -173,6 +200,14 @@ is built from the MAC address (EUI-64): split the MAC in the middle, insert
 `ff:fe`, flip bit 0x02 of the first byte. Example:
 `b8:27:eb:12:34:56` → `ba27:ebff:fe12:3456`.
 
+The bit flip only changes the **second hex digit** of the first byte:
+
+| digit | 0 | 1 | 4 | 5 | 8 | 9 | c | d |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| becomes | 2 | 3 | 6 | 7 | a | b | e | f |
+
+(and the other way round: `2` → `0`, `a` → `8`, …).
+
 **Goal:** use the clue from stage 5 and the vendor list in
 `/usr/share/nmap/nmap-mac-prefixes` to compute the candidate addresses, find
 the devices, then talk to each of them in its own protocol. nmap has an NSE
@@ -185,7 +220,8 @@ script for each one:
 | Modbus controller | 502/tcp | `modbus-discover` | `mbpoll`, `python3` + `pymodbus` |
 | Web login | 80/tcp, 23/tcp | `http-brute`, `telnet-brute` | `curl`, `telnet` |
 
-Remember UDP: `nmap -6 -sU -p5683 …`. For the brute-force scripts add
+Remember UDP: `nmap -6 -sU -p5683 …`. </br>
+For the brute-force scripts add
 `--script-args brute.firstonly=true`, otherwise they keep going after the
 first hit.
 
