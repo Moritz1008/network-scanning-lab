@@ -31,7 +31,7 @@ docker version                  # Linux: Server version 28 or newer
 docker compose version
 git clone <repo-url>
 cd network-scanning-lab
-docker compose build
+docker compose --profile "*" build
 docker compose --profile lab3 up -d
 docker compose --profile "*" down
 ```
@@ -42,7 +42,7 @@ If all commands finish without errors, you are ready.
 Execute this in a terminal inside of this directory
 
 ```bash
-docker compose build            # do this before the session
+docker compose --profile "*" build   # all images, do this before the session
 docker compose --profile "*" pull --ignore-buildable   # target images, also before
 docker compose up -d
 docker compose exec attacker bash
