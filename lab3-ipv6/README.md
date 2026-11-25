@@ -113,7 +113,7 @@ its address cannot be guessed. Find it and fetch the flag.
 1. Ask every host on the link to answer via IPv6 multicast ping (take a look at the slides for the magic address).
    Then look at your neighbour cache: `ip -6 neigh`.
 
-    **Leave your own laptop out.** One neighbour is your Docker host, i.e. your
+    **Ignore your own laptop.** One neighbour is your Docker host, i.e. your
     own computer; scanning it shows your own services, not the lab. 
     (Two neighbours are marked `router`: your Docker host and a real router.
     You can identify the Docker host via its hostname or the MAC Address you saw in Stage 0.)
