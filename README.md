@@ -49,6 +49,9 @@ docker compose exec attacker bash
 
 You are now in the attacker container. All scans start from here.
 
+New to the Linux shell? The [Linux CLI cheat sheet](CHEATSHEET.md) has the
+commands you need (`ls`, `cat`, `ip a`, `nc`, `curl`, `vi`, …).
+
 ## Labs
 
 Each lab has its own targets, started with a profile:
