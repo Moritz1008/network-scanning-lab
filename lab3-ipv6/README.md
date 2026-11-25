@@ -7,8 +7,8 @@
 > asking DNS, and finally by looking at the IoT devices, where finding a device
 > often means you already have access.
 
-Every stage gives you a `FLAG{...}`. Stages 1–6 are the core of the lab
-(about 25 minutes). Stage 7 is a bonus for fast teams. </br>
+Every stage gives you a `FLAG{...}`. Stages 1–7 are the core of the lab
+(about 25 minutes). The bonus (three more IoT devices) is for fast teams. </br>
 Stuck? See
 [HINTS.md](HINTS.md), one hint per stage.
 
@@ -41,8 +41,8 @@ flowchart LR
     subgraph corp["corp network: prefix revealed in stage 1"]
         servers["servers<br/>stages 2–3"]
         revhost["host only in reverse DNS<br/>stage 4"]
-        iot["IoT devices<br/>MQTT, CoAP, Modbus, login<br/>stage 6"]
-        internal["internal hosts<br/>stage 7 (bonus)"]
+        iot["IoT devices<br/>login: stage 6<br/>MQTT, CoAP, Modbus: bonus"]
+        internal["internal hosts<br/>stage 7"]
     end
 
     attacker --- target
@@ -64,8 +64,9 @@ flowchart LR
 | 3 | The address pool | sequential (DHCPv6-style) addresses: one hit, then the neighbours |
 | 4 | Ask the phone book | reverse DNS walk in `ip6.arpa` (NXDOMAIN vs. NOERROR) |
 | 5 | Two doors, one lock | dual-stack gap: filtered over IPv4, open over IPv6 |
-| 6 | Smart, not secure | find IoT devices via EUI-64 and vendor OUI, then MQTT, CoAP, Modbus and a default login with nmap NSE scripts (4 flags) |
-| 7 | Inside job (bonus) | pivot through an IoT device, then multicast discovery inside corp |
+| 6 | Smart, not secure | find IoT devices via EUI-64 and vendor OUI, then break a default login |
+| 7 | Inside job | pivot through an IoT device, then multicast discovery inside corp |
+| Bonus | Talk to the machines | MQTT, CoAP and Modbus with nmap NSE scripts (3 flags) |
 
 ### Two things you need all the time
 
@@ -193,7 +194,7 @@ blocked it in the firewall. In *a* firewall.
 addresses and read the admin page. It has the flag and something you need for
 stage 6.
 
-## Stage 6 – Smart, not secure (4 flags)
+## Stage 6 – Smart, not secure
 
 A batch of IoT devices configures its addresses with SLAAC. Their interface ID
 is built from the MAC address (EUI-64): split the MAC in the middle, insert
@@ -209,26 +210,20 @@ The bit flip only changes the **second hex digit** of the first byte:
 (and the other way round: `2` → `0`, `a` → `8`, …).
 
 **Goal:** use the clue from stage 5 and the vendor list in
-`/usr/share/nmap/nmap-mac-prefixes` to compute the candidate addresses, find
-the devices, then talk to each of them in its own protocol. nmap has an NSE
-script for each one:
+`/usr/share/nmap/nmap-mac-prefixes` to compute the candidate addresses and
+find the devices. Then scan them: one of them has a web login and still uses
+its factory password. Find the password with nmap and log in; the page shows
+the flag.
 
-| Device | Port | NSE script | Client |
-| --- | --- | --- | --- |
-| MQTT broker | 1883/tcp | `mqtt-subscribe` | `mosquitto_sub` |
-| CoAP sensor | 5683/udp | `coap-resources` | `coap-client-notls` |
-| Modbus controller | 502/tcp | `modbus-discover` | `mbpoll`, `python3` + `pymodbus` |
-| Web login | 80/tcp, 23/tcp | `http-brute`, `telnet-brute` | `curl`, `telnet` |
+`nmap -6 -p80 --script http-brute --script-args brute.firstonly=true <address>`
+tries common usernames and passwords. Without `brute.firstonly=true` it keeps
+going after the first hit. Then log in with `curl -u <user>:<password> 'http://[<address>]/'`.
 
-Remember UDP: `nmap -6 -sU -p5683 …`. </br>
-For the brute-force scripts add
-`--script-args brute.firstonly=true`, otherwise they keep going after the
-first hit.
+## Stage 7 – Inside job
 
-## Stage 7 – Inside job (bonus)
-
-Outside the corp network, `ff02::1` only reached the outside hosts. One of
-the IoT devices gives you a shell.
+Outside the corp network, `ff02::1` only reached the outside hosts. The
+device you logged into in stage 6 also has a Telnet shell with the same
+account: `telnet <address>`.
 
 **Goal:** log in, then do stage 1 again, but from inside: who answers on the
 corp link? Compare with everything you have found so far. Some hosts were never
@@ -236,6 +231,22 @@ reachable from outside. One of them has the final flag.
 
 Inside the device you only have `ping`, `nc` and `ip`. `nc -6 -zv -w1 <host> 1-10000`
 is a small port scanner.
+
+## Bonus – Talk to the machines (3 flags)
+
+The other three IoT devices from stage 6 each speak their own protocol, and
+each one gives away a flag to anyone who asks. nmap has an NSE script for
+each one:
+
+| Device | Port | NSE script | Client |
+| --- | --- | --- | --- |
+| MQTT broker | 1883/tcp | `mqtt-subscribe` | `mosquitto_sub` |
+| CoAP sensor | 5683/udp | `coap-resources` | `coap-client-notls` |
+| Modbus controller | 502/tcp | `modbus-discover` | `mbpoll`, `python3` + `pymodbus` |
+
+CoAP runs over **UDP**, and nmap scans only TCP by default. Without `-sU` the
+CoAP device looks like it has no open ports:
+`nmap -6 -sU -p5683 --script coap-resources <address>`.
 
 ---
 
