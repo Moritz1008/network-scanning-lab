@@ -2,7 +2,7 @@
 
 > **Scenario.** At the cold-chain logistics company **CoolCorp**, refrigeration controllers have been hijacked. The incident-response team already has a foot in the door: a Linux host inside the CoolCorp network — your `attacker` container. Your job: map the network, find the compromised devices, and trace the attacker's path all the way to the controller.
 
-Four stages, from **passive capture** to an **idle scan**. Each stage gives you a `FLAG{...}`. **That flag is at the same time the token for the next stage** — without the previous one you can't move on.
+Five stages, from **passive capture** over an **idle scan** to **firewall evasion**. Each stage gives you a `FLAG{...}`. **That flag is at the same time the token for the next stage** — without the previous one you can't move on.
 
 ---
 
@@ -61,7 +61,7 @@ mission for Stage 3.
 The maintenance host can do more than you've seen so far. Find **all** open ports, track down the hidden **CoolCtl console**, and determine its **version** — the service gives itself away through its banner.
 
 Hints:
-- The port wasn't open before (maybe check what you found in Stage 2)
+- Find the correct port
 - Then connect as in Stage 2 and authenticate with the **Stage 2 flag**.
 
 ➡️ You get the **Stage 3 flag** and a situation report on the actual target:
@@ -87,8 +87,30 @@ Hints:
   ncat <maint-ip> 9000
   ```
 
-➡️ If both token **and** port are correct, you get the **final flag**. That
-completes Part I.
+➡️ If both token **and** port are correct, you get the **Stage 4 flag** — and a
+lead on the intruder's backdoor box.
+
+---
+
+## Stage 5 — The Backdoor
+
+The intruder left a **backdoor box** at `172.30.0.50`. Two obstacles stand in your way and you need **both** techniques to clear them.
+
+**Part A — crack the panel (NSE brute force).** The box's web panel on **port 80** has a weak login. Let nmap's scripting engine brute-force it, then read the panel:
+
+https://nmap.org/nsedoc/scripts/http-brute.html
+
+```bash
+curl -u <user>:<pass> http://172.30.0.50/
+```
+
+Report the open C2 port to the IR console on the jump host, **port 9001**, as `FLAG4:<port>`:
+
+```bash
+ncat <maint-ip> 9001
+```
+
+➡️ Correct token **and** port → the **final flag**. That completes Part I.
 
 ---
 

@@ -94,8 +94,10 @@ services:
       FLAG1: "FLAG{passive_beacon_sniffed}"
       FLAG2: "FLAG{alive_hosts_mapped}"
       FLAG3: "FLAG{banner_version_leak}"
-      FLAG4: "FLAG{idle_printer_pivot_31337}"
-      HIDDEN_PORT: "31337"
+      FLAG4: "FLAG{idle_printer_pivot}"
+      FLAG5: "FLAG{backdoor_c2_cracked}"
+      HIDDEN_PORT: "44371"
+      C2_PORT: "4444"
     networks:
       lab:
         ipv4_address: 172.30.0.20
@@ -126,7 +128,7 @@ services:
           printf 'Controller coolctl-core is walled off by a firewall (direct scan: filtered).\r\n'
           printf 'It only trusts the old network printer coolcorp-printer (JetDirect).\r\n'
           printf 'Use the printer as a ZOMBIE for an idle scan (-sI) against the controller.\r\n'
-          printf 'The service you are after is in port range 31330-31345.\r\n'
+          printf 'The service you are after is in port range 44360-44380.\r\n'
           printf 'Report the open port to the jump host (port 9000) as  %s:<port>\r\n' "$$FLAG3"
         else
           printf '\r\nWrong token. You need the clearance from Stage 2.\r\n'
@@ -142,13 +144,31 @@ services:
         elif [ "$$port" != "$$HIDDEN_PORT" ]; then
           printf '\r\nToken ok, but port %s is not open on the controller.\r\nRun the idle scan through the printer correctly.\r\n' "$$port"
         else
-          printf '\r\nCorrect. Pivot reconstructed, attack path documented.\r\nFINAL FLAG: %s\r\n\r\nThat completes Part I (Scanning Fundamentals). GG.\r\n' "$$FLAG4"
+          printf '\r\nCorrect. Pivot reconstructed, attack path documented.\r\nSTAGE 4 FLAG: %s\r\n\r\n' "$$FLAG4"
+          printf '=== One more lead ===\r\n'
+          printf 'The intruder left a backdoor box at 172.30.0.50.\r\n'
+          printf 'Its web panel (port 80) has a weak login - crack it with NSE http-brute.\r\n'
+          printf 'The panel tells you how to finish.\r\n'
         fi
         EOF
-        echo "[maint] stages 2/3/4 on :2323 :1337 :9000"
+        # Stage 5 - backdoor C2 report (needs FLAG4 + the FIN/Xmas-discovered port)
+        cat > /h5.sh <<'EOF'
+        printf '=== CoolCorp Incident-Response Console (C2 tracking) ===\r\nReport the hidden C2 port as  <FLAG4>:<port>\r\n> '
+        read raw; raw=$$(printf '%s' "$$raw" | tr -d '\r\n')
+        tok=$${raw%:*}; port=$${raw##*:}
+        if [ "$$tok" != "$$FLAG4" ]; then
+          printf '\r\nWrong token. Finish Stage 4 (the printer pivot) first.\r\n'
+        elif [ "$$port" != "$$C2_PORT" ]; then
+          printf '\r\nToken ok, but port %s is not the open C2 port.\r\nA plain -sS shows it filtered - use a FIN/NULL/Xmas scan (-sF / -sN / -sX).\r\n' "$$port"
+        else
+          printf '\r\nCorrect. Backdoor C2 located and documented.\r\nFINAL FLAG: %s\r\n\r\nThat completes Part I (Scanning Fundamentals). GG.\r\n' "$$FLAG5"
+        fi
+        EOF
+        echo "[maint] stages 2/3/4/5 on :2323 :1337 :9000 :9001"
         socat TCP-LISTEN:2323,reuseaddr,fork EXEC:"sh /h2.sh" &
         socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"sh /h3.sh" &
         socat TCP-LISTEN:9000,reuseaddr,fork EXEC:"sh /h4.sh" &
+        socat TCP-LISTEN:9001,reuseaddr,fork EXEC:"sh /h5.sh" &
         wait
 
  
@@ -175,13 +195,39 @@ services:
       - sh
       - -c
       - |
-        iptables -A INPUT -s 172.30.0.30 -p tcp --dport 31337 -j ACCEPT
+        iptables -A INPUT -s 172.30.0.30 -p tcp --dport 44371 -j ACCEPT
         iptables -A INPUT -p tcp -j DROP
-        echo "[controller] CoolCtl-Core on :31337 (printer-only firewall)"
-        exec socat TCP-LISTEN:31337,reuseaddr,fork SYSTEM:"printf 'CoolCtl-Core v2.1 :: refrigeration control bus\r\nACCESS RESTRICTED - trusted maintenance peers only.\r\n'"
+        echo "[controller] CoolCtl-Core on :44371 (printer-only firewall)"
+        exec socat TCP-LISTEN:44371,reuseaddr,fork SYSTEM:"printf 'CoolCtl-Core v2.1 :: refrigeration control bus\r\nACCESS RESTRICTED - trusted maintenance peers only.\r\n'"
     networks:
       lab:
         ipv4_address: 172.30.0.40
+
+  # Stage 5 - the intruder's dropped backdoor box. Two techniques are required:
+  #  * NSE http-brute cracks the weak web login on :80 (reachable)
+  #  * the C2 port :4444 is behind a stateless firewall (drops SYN), so a plain
+  #    -sS shows it 'filtered' - only a FIN/NULL/Xmas scan reveals it 'open'.
+  backdoor:
+    build: ./lab1/targets
+    hostname: backdoor
+    profiles: [lab1]
+    cap_add: [NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - |
+        htpasswd -bc /etc/nginx/.htpasswd admin admin
+        mkdir -p /var/www/backdoor
+        printf '<html><body><h1>CoolCorp C2 Panel</h1>\n<p>Backdoor online. The C2 control channel listens on a port hidden behind a stateless firewall. The firewall drops SYN across the whole 4400-4500 range, so a normal SYN scan (-sS) shows that entire range as "filtered" - you cannot tell which port is really open.</p>\n<p>Only ONE of them actually listens. Reveal it with a FIN/NULL/Xmas scan (-sF / -sN / -sX) over that range, then report it to the IR console on the jump host, port 9001, as  FLAG4:PORT.</p>\n</body></html>\n' > /var/www/backdoor/index.html
+        rm -f /etc/nginx/sites-enabled/default
+        printf 'server {\n  listen 80 default_server;\n  root /var/www/backdoor;\n  index index.html;\n  location / {\n    auth_basic "CoolCorp C2 Panel";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n  }\n}\n' > /etc/nginx/conf.d/backdoor.conf
+        iptables -A INPUT -p tcp --syn --dport 4400:4500 -j DROP
+        socat TCP-LISTEN:4444,reuseaddr,fork SYSTEM:"printf 'cnc-beacon online\r\n'" &
+        echo "[backdoor] web panel :80 (weak login), hidden C2 :4444 (SYN-filtered)"
+        exec nginx -g 'daemon off;'
+    networks:
+      lab:
+        ipv4_address: 172.30.0.50
 
   # Decoys so host discovery (-sn) returns a realistic set of live hosts.
   decoy-web1:
