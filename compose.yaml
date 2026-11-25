@@ -1,0 +1,554 @@
+# Network Scanning lab environment
+#
+#   docker compose up -d --build            # attacker only
+#   docker compose --profile lab2 up -d --build --wait  # ZMap lab
+#   docker compose --profile lab3 up -d     # attacker + targets of lab 3
+#   docker compose exec attacker bash       # open a shell
+#   docker compose --profile "*" down       # stop everything
+#
+# One shared attacker container for all labs. Each lab adds its targets
+# under its own profile (lab1, lab2, lab3), so only the targets of the
+# current lab are running.
+
+networks:
+  lab:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd00:6:6::/64
+
+  # Lab 3: CoolCorp HQ internal network. IPv6-only, no Docker uplink
+  # (internal), reachable only through v6-router. Docker's own gateway is
+  # moved to an unguessable address so fd00:c::1 is free for the router.
+  corp:
+    internal: true
+    enable_ipv4: false
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:c::/64
+          gateway: fd00:c::ffff:ffff:ffff:fffe
+
+
+# Common settings for hosts in the lab 3 corp network: built from the base
+# image, whose entrypoint adds the route back to the outside via v6-router.
+x-corp-host: &corp-host
+  build: ./lab3-ipv6/base
+  profiles: [lab3]
+  depends_on: [v6-router]
+  cap_add: [NET_ADMIN]
+
+# Lab 3 IoT devices: same as corp hosts, but one shared IoT image.
+x-iot-device: &iot-device
+  <<: *corp-host
+  build:
+    context: ./lab3-ipv6
+    dockerfile: iot/Dockerfile
+
+services:
+  # ---------------------------------------------------------------- attacker
+  attacker:
+    build: ./attacker
+    hostname: attacker
+    cap_add: [NET_RAW, NET_ADMIN]   # SYN scans, ZMap, packet capture
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./work:/work                # captures and scan results end up on the host
+      # Only the student material. The instructor check stays on the host.
+      - ./lab2-zmap/material/snapshot.json:/opt/lab2/snapshot.json:ro
+    networks: [lab]
+
+
+
+  # ------------------------------------------------- lab 1: fundamentals
+
+  # Stage 1
+  thermostat:
+    build: ./lab1/targets
+    hostname: thermostat
+    profiles: [lab1]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # so the beacon reaches the host on Linux Docker too
+    environment:
+      FLAG1: "FLAG{passive_beacon_sniffed}"
+    command:
+      - sh
+      - -c
+      - |
+        msg="CoolCorp ThermoLink TH-700 :: telemetry uplink\r\ndevice=thermostat-07 site=cold-storage-DE firmware=1.4.2 status=ONLINE\r\nsetpoint=-18C compressor=running door=closed\r\nmaint-token=$$FLAG1\r\n"
+        echo "[beacon] implant live, leaking token to host + broadcast every 3s"
+        while true; do
+          printf "$$msg" | socat -u - UDP-SENDTO:host.docker.internal:31415 2>/dev/null
+          printf "$$msg" | socat -u - UDP-DATAGRAM:172.30.0.255:31415,broadcast 2>/dev/null
+          sleep 3
+        done
+    networks: [lab]
+
+  # Stages 2-4
+  coolctl-maint:
+    build: ./lab1/targets
+    hostname: coolctl-maint
+    profiles: [lab1]
+    environment:
+      FLAG1: "FLAG{passive_beacon_sniffed}"
+      FLAG2: "FLAG{alive_hosts_mapped}"
+      FLAG3: "FLAG{banner_version_leak}"
+      FLAG4: "FLAG{idle_printer_pivot}"
+      FLAG5: "FLAG{backdoor_c2_cracked}"
+      HIDDEN_PORT: "44371"
+      C2_PORT: "4444"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.20
+    command:
+      - sh
+      - -c
+      - |
+        # Stage 2 - maintenance access (needs FLAG1 from the beacon)
+        cat > /h2.sh <<'EOF'
+        printf '=== CoolCtl maintenance access (jump host) ===\r\nAuthentication required.\r\nEnter maintenance token: '
+        read tok; tok=$$(printf '%s' "$$tok" | tr -d '\r\n')
+        if [ "$$tok" = "$$FLAG1" ]; then
+          printf '\r\nToken accepted. Welcome, technician.\r\nSTAGE 2 FLAG: %s\r\n\r\n' "$$FLAG2"
+          printf 'Mission: this maintenance host runs more services than you have seen.\r\n'
+          printf 'Scan it FULLY (-p-), find the hidden CoolCtl console,\r\n'
+          printf 'determine its version with -sV, then connect to it.\r\n'
+        else
+          printf '\r\nAccess denied. This token comes from the thermostat telemetry (Stage 1).\r\n'
+        fi
+        EOF
+        # Stage 3 - CoolCtl console (banner for -sV; needs FLAG2)
+        cat > /h3.sh <<'EOF'
+        printf 'CoolCtl-Core Maintenance Console v4.8.1 (build 48871) ready\r\nEnter maintenance token: '
+        read tok; tok=$$(printf '%s' "$$tok" | tr -d '\r\n')
+        if [ "$$tok" = "$$FLAG2" ]; then
+          printf '\r\nConsole unlocked.\r\nSTAGE 3 FLAG: %s\r\n\r\n' "$$FLAG3"
+          printf '=== Situation report ===\r\n'
+          printf 'Controller coolctl-core is walled off by a firewall (direct scan: filtered).\r\n'
+          printf 'It only trusts the old network printer coolcorp-printer (JetDirect).\r\n'
+          printf 'Use the printer as a ZOMBIE for an idle scan (-sI) against the controller.\r\n'
+          printf 'The service you are after is in port range 44360-44380.\r\n'
+          printf 'Report the open port to the jump host (port 9000) as  %s:<port>\r\n' "$$FLAG3"
+        else
+          printf '\r\nWrong token. You need the clearance from Stage 2.\r\n'
+        fi
+        EOF
+        # Stage 4 - IR report endpoint (needs FLAG3 + the idle-scanned port)
+        cat > /h4.sh <<'EOF'
+        printf '=== CoolCorp Incident-Response Console ===\r\nReport the open controller port in the format <FLAG3>:<port>\r\n> '
+        read raw; raw=$$(printf '%s' "$$raw" | tr -d '\r\n')
+        tok=$${raw%:*}; port=$${raw##*:}
+        if [ "$$tok" != "$$FLAG3" ]; then
+          printf '\r\nWrong token. Solve Stage 3 (CoolCtl console) first.\r\n'
+        elif [ "$$port" != "$$HIDDEN_PORT" ]; then
+          printf '\r\nToken ok, but port %s is not open on the controller.\r\nRun the idle scan through the printer correctly.\r\n' "$$port"
+        else
+          printf '\r\nCorrect. Pivot reconstructed, attack path documented.\r\nSTAGE 4 FLAG: %s\r\n\r\n' "$$FLAG4"
+          printf '=== One more lead ===\r\n'
+          printf 'The intruder left a backdoor box at 172.30.0.50.\r\n'
+          printf 'Its web panel (port 80) has a weak login - crack it with NSE http-brute.\r\n'
+          printf 'The panel tells you how to finish.\r\n'
+        fi
+        EOF
+        # Stage 5 - backdoor C2 report (needs FLAG4 + the FIN/Xmas-discovered port)
+        cat > /h5.sh <<'EOF'
+        printf '=== CoolCorp Incident-Response Console (C2 tracking) ===\r\nReport the hidden C2 port as  <FLAG4>:<port>\r\n> '
+        read raw; raw=$$(printf '%s' "$$raw" | tr -d '\r\n')
+        tok=$${raw%:*}; port=$${raw##*:}
+        if [ "$$tok" != "$$FLAG4" ]; then
+          printf '\r\nWrong token. Finish Stage 4 (the printer pivot) first.\r\n'
+        elif [ "$$port" != "$$C2_PORT" ]; then
+          printf '\r\nToken ok, but port %s is not the open C2 port.\r\nA plain -sS shows it filtered - use a FIN/NULL/Xmas scan (-sF / -sN / -sX).\r\n' "$$port"
+        else
+          printf '\r\nCorrect. Backdoor C2 located and documented.\r\nFINAL FLAG: %s\r\n\r\nThat completes Part I (Scanning Fundamentals). GG.\r\n' "$$FLAG5"
+        fi
+        EOF
+        echo "[maint] stages 2/3/4/5 on :2323 :1337 :9000 :9001"
+        socat TCP-LISTEN:2323,reuseaddr,fork EXEC:"sh /h2.sh" &
+        socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"sh /h3.sh" &
+        socat TCP-LISTEN:9000,reuseaddr,fork EXEC:"sh /h4.sh" &
+        socat TCP-LISTEN:9001,reuseaddr,fork EXEC:"sh /h5.sh" &
+        wait
+
+ 
+  coolcorp-printer:
+    build: ./lab1/targets
+    hostname: coolcorp-printer
+    profiles: [lab1]
+    cap_add: [NET_RAW, NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - "iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP; exec python3 /opt/printer_zombie.py"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.30
+
+
+  coolctl-core:
+    build: ./lab1/targets
+    hostname: coolctl-core
+    profiles: [lab1]
+    cap_add: [NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - |
+        iptables -A INPUT -s 172.30.0.30 -p tcp --dport 44371 -j ACCEPT
+        iptables -A INPUT -p tcp -j DROP
+        echo "[controller] CoolCtl-Core on :44371 (printer-only firewall)"
+        exec socat TCP-LISTEN:44371,reuseaddr,fork SYSTEM:"printf 'CoolCtl-Core v2.1 :: refrigeration control bus\r\nACCESS RESTRICTED - trusted maintenance peers only.\r\n'"
+    networks:
+      lab:
+        ipv4_address: 172.30.0.40
+
+  # Stage 5 - the intruder's dropped backdoor box. Two techniques are required:
+  #  * NSE http-brute cracks the weak web login on :80 (reachable)
+  #  * the C2 port :4444 is behind a stateless firewall (drops SYN), so a plain
+  #    -sS shows it 'filtered' - only a FIN/NULL/Xmas scan reveals it 'open'.
+  backdoor:
+    build: ./lab1/targets
+    hostname: backdoor
+    profiles: [lab1]
+    cap_add: [NET_ADMIN]
+    command:
+      - sh
+      - -c
+      - |
+        htpasswd -bc /etc/nginx/.htpasswd admin admin
+        mkdir -p /var/www/backdoor
+        printf '<html><body><h1>CoolCorp C2 Panel</h1>\n<p>Backdoor online. The C2 control channel listens on a port hidden behind a stateless firewall. The firewall drops SYN across the whole 4400-4500 range, so a normal SYN scan (-sS) shows that entire range as "filtered" - you cannot tell which port is really open.</p>\n<p>Only ONE of them actually listens. Reveal it with a FIN/NULL/Xmas scan (-sF / -sN / -sX) over that range, then report it to the IR console on the jump host, port 9001, as  FLAG4:PORT.</p>\n</body></html>\n' > /var/www/backdoor/index.html
+        rm -f /etc/nginx/sites-enabled/default
+        printf 'server {\n  listen 80 default_server;\n  root /var/www/backdoor;\n  index index.html;\n  location / {\n    auth_basic "CoolCorp C2 Panel";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n  }\n}\n' > /etc/nginx/conf.d/backdoor.conf
+        iptables -A INPUT -p tcp --syn --dport 4400:4500 -j DROP
+        socat TCP-LISTEN:4444,reuseaddr,fork SYSTEM:"printf 'cnc-beacon online\r\n'" &
+        echo "[backdoor] web panel :80 (weak login), hidden C2 :4444 (SYN-filtered)"
+        exec nginx -g 'daemon off;'
+    networks:
+      lab:
+        ipv4_address: 172.30.0.50
+
+  # Decoys so host discovery (-sn) returns a realistic set of live hosts.
+  decoy-web1:
+    image: nginx:alpine
+    hostname: hvac-dashboard
+    profiles: [lab1]
+    networks: [lab]
+
+  decoy-web2:
+    image: nginx:alpine
+    hostname: backup-nas
+    profiles: [lab1]
+    networks: [lab]
+
+
+
+  # --------------------------------------------- lab 2: internet-scale
+  # Fixed addresses make the fictional historical index reproducible.
+  # No ports are published on the host. Inspect these from the attacker.
+  zmap-portal:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/portal/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10
+
+  # A banner emulator, not a full SSH server. Port number != protocol.
+  zmap-banner:
+    image: alpine/socat
+    profiles: [lab2]
+    command:
+      - "TCP4-LISTEN:80,fork,reuseaddr"
+      - "SYSTEM:cat /etc/northstar/banner.txt"
+    volumes:
+      - ./lab2-zmap/banner/banner.txt:/etc/northstar/banner.txt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -w 1 127.0.0.1 80 | grep -q '^SSH-2.0-LabSSH_1.0'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.20
+
+  zmap-status:
+    image: nginx:alpine
+    profiles: [lab2]
+    volumes:
+      - ./lab2-zmap/status/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./lab2-zmap/status/index.html:/usr/share/nginx/html/index.html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks:
+      lab:
+        ipv4_address: 172.30.0.30
+
+
+
+  # -------------------------------------------------------- lab 3: IPv6
+  # Listens on IPv6 only. The fixed address has a random-looking interface
+  # ID so it cannot be guessed (Docker would otherwise assign ::2, ::3, ...).
+  # Stage 1: the banner gives the flag plus the way into the corp network.
+  hq-gate: # target
+    image: alpine/socat
+    hostname: hq-gate
+    profiles: [lab3]
+    environment:
+      FLAG1: "FLAG{h3ll0_ff02_1}"
+    entrypoint: [sh, -c]
+    command:
+      - |
+        cat > /tmp/banner <<EOF
+        === CoolCorp HQ :: visitor gateway ===
+        STAGE 1 FLAG: $$FLAG1
+
+        Welcome, contractor. The HQ network is not on this link:
+          corp prefix : fd00:c::/64
+          gateway     : fd00:6:6::fe  (coolcorp-edge)
+        Your machine has no route there yet. Add one, then go find the hosts.
+        EOF
+        exec socat TCP6-LISTEN:31337,fork,reuseaddr,ipv6only=1 SYSTEM:"cat /tmp/banner"
+    networks:
+      lab:
+        ipv6_address: fd00:6:6::c0f:fee:1337:42
+
+  hq-web: # decoy
+    image: nginx:alpine
+    hostname: hq-web
+    profiles: [lab3]
+    networks: [lab]
+
+  # Edge router between outside (lab) and corp. Forwards IPv6 unicast only.
+  # Stage 5: admin interface on :8080, firewalled on IPv4 only.
+  v6-router:
+    build: ./lab3-ipv6/router
+    hostname: coolcorp-edge
+    profiles: [lab3]
+    cap_add: [NET_ADMIN]
+    environment:
+      FLAG5: "FLAG{dual_stack_half_firewalled}"
+    sysctls:
+      net.ipv6.conf.all.forwarding: 1
+      net.ipv4.ip_forward: 0
+    networks:
+      lab:
+        ipv4_address: 172.30.0.254
+        ipv6_address: fd00:6:6::fe
+      corp:
+        ipv6_address: fd00:c::1
+
+  # Stage 2: mail server (low-byte / service-port pattern)
+  v6-mail:
+    <<: *corp-host
+    hostname: mail
+    command: [banner, "25", '220 mail.corp.lab ESMTP CoolCorp Mailgate ready\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::25
+
+  # Stage 2: intranet web server (service-port pattern). Its page leaks one
+  # address of the stage 3 pool.
+  v6-www:
+    <<: *corp-host
+    hostname: www
+    command: [python3, -m, http.server, "80", --bind, "::", --directory, /srv/www]
+    volumes:
+      - ./lab3-ipv6/www/index.html:/srv/www/index.html:ro
+    networks:
+      corp:
+        ipv6_address: fd00:c::80
+
+  # Stage 2: the "unusual" host (hex word pattern). Flag in the banner.
+  v6-cafe:
+    <<: *corp-host
+    hostname: barista
+    environment:
+      FLAG2: "FLAG{h3x_w0rds_l1k3_cafe}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 8888 "BaristaNet 2000 coffee telemetry :: beans=low milk=ok\r\nSTAGE 2 FLAG: $$FLAG2\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::cafe
+
+  # Stage 3: sequential DHCPv6-style pool fd00:c::1020 - ::1025.
+  # ::1023 is leaked by the intranet page, the flag is on ::1025.
+  v6-pool-1020:
+    <<: *corp-host
+    hostname: ws-1020
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1020
+
+  v6-pool-1021:
+    <<: *corp-host
+    hostname: ws-1021
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1021
+
+  v6-pool-1022:
+    <<: *corp-host
+    hostname: ws-1022
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1022
+
+  v6-pool-1023:
+    <<: *corp-host
+    hostname: kiosk-lobby
+    command: [banner, "80", 'HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\n\r\nkiosk-lobby: meeting room display. My address: fd00:c::1023. Nothing to see here.\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1023
+
+  v6-pool-1024:
+    <<: *corp-host
+    hostname: ws-1024
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::1024
+
+  v6-pool-1025:
+    <<: *corp-host
+    hostname: print-hq
+    environment:
+      FLAG3: "FLAG{dhcpv6_p00l_n31ghb0urs}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 9100 "@PJL INFO ID\r\nCoolCorp PrintHQ 4200\r\nSTAGE 3 FLAG: $$FLAG3\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::1025
+
+  # Stage 4: DNS server in the outside network. Reverse zone of fd00:c::/64
+  # contains a host that has no forward record.
+  v6-dns:
+    build: ./lab3-ipv6/dns
+    hostname: ns
+    profiles: [lab3]
+    networks:
+      lab:
+        ipv6_address: fd00:6:6::53
+
+  # Stage 4: host that exists only as a PTR record (random interface ID).
+  v6-backup:
+    <<: *corp-host
+    hostname: legacy-backup
+    environment:
+      FLAG4: "FLAG{ip6_arpa_kn0ws_all}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 873 "@RSYNCD: 31.0\nlegacy-backup: nightly snapshots of HQ\nSTAGE 4 FLAG: $$FLAG4\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::7a3e:91b2:4c5d:e816
+
+
+  # Stage 6: IoT batch, Raspberry Pi OUI 28:cd:c1, NIC serials 00:00:10-1f.
+  # SLAAC/EUI-64: MAC 28:cd:c1:00:00:xx -> fd00:c::2acd:c1ff:fe00:xx
+  # (Docker does not do SLAAC, so MAC and address are both set here.)
+  v6-iot-mqtt:
+    <<: *iot-device
+    hostname: sensorhub
+    environment:
+      FLAG_MQTT: "FLAG{retained_mqtt_n0_auth}"
+    command: [/opt/iot/start-mqtt.sh]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:13"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:13
+
+  v6-iot-coap:
+    <<: *iot-device
+    hostname: doorsensor
+    environment:
+      FLAG_COAP: "FLAG{coap_well_known_core}"
+    command: [python3, /opt/iot/coap_server.py]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:17"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:17
+
+  v6-iot-modbus:
+    <<: *iot-device
+    hostname: coolctl-core-hq
+    environment:
+      FLAG_MODBUS: "FLAG{modbus_h0ld1ng_r3g1sters}"
+    command: [python3, /opt/iot/modbus_server.py]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:1a"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:1a
+
+  # CoolCtl 3000 (the former v6-fridge): HTTP basic auth + telnet, both
+  # admin:admin. Also the pivot for stage 7 (shell with ping, nc, ip).
+  v6-fridge:
+    <<: *iot-device
+    hostname: coolctl3000
+    environment:
+      FLAG_LOGIN: "FLAG{admin_admin_still_works}"
+    command: [/opt/iot/start-coolctl.sh]
+    networks:
+      corp:
+        mac_address: "28:cd:c1:00:00:1d"
+        ipv6_address: fd00:c::2acd:c1ff:fe00:1d
+
+  # Stage 7 (bonus): internal hosts with random interface IDs. Not in DNS, no
+  # route to the outside network: reachable only from inside corp, e.g. via
+  # the CoolCtl 3000 shell. Found with ping -6 ff02::1 on the corp link.
+  v6-int-master:
+    <<: *corp-host
+    hostname: coolctl-master
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+      FLAG7: "FLAG{p1v0t_and_ff02_1_again}"
+    command:
+      - sh
+      - -c
+      - 'exec banner 4840 "CoolCtl Master Controller (OPC UA gateway) :: all HQ cold rooms\r\nFINAL FLAG: $$FLAG7\r\nThat completes lab 3. GG.\r\n"'
+    networks:
+      corp:
+        ipv6_address: fd00:c::5e1f:9a4b:2d7c:83e1
+
+  v6-int-hist:
+    <<: *corp-host
+    hostname: historian
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+    command: [banner, "5432", 'historian: temperature archive (PostgreSQL 15). Ask coolctl-master for live data.\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::b2e4:17c9:6a03:f58d
+
+  v6-int-eng:
+    <<: *corp-host
+    hostname: eng-ws
+    cap_add: []
+    environment:
+      NO_OUTSIDE_ROUTE: "1"
+    command: [banner, "22", 'SSH-2.0-OpenSSH_9.2p1 eng-ws (engineering workstation)\r\n']
+    networks:
+      corp:
+        ipv6_address: fd00:c::91d3:4f6e:c2a8:b77

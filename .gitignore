@@ -1,2 +1,5 @@
 work/*
 !work/.gitkeep
+
+# Instructor material (solve script, notes): not for participants
+instructor/

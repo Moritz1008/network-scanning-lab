@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       # lab 2: internet-scale scanning, Shodan lookups
       zmap curl ca-certificates jq dnsutils \
       # lab 3: IPv6
-      ndisc6 thc-ipv6 \
+      ndisc6 thc-ipv6 ipv6toolkit traceroute \
+      # lab 3: IoT protocols and logins
+      mosquitto-clients libcoap3-bin python3-pymodbus python3-serial-asyncio mbpoll \
+      telnet openssh-client \
       # basics
       iproute2 iputils-ping netcat-openbsd vim-tiny less \
     && rm -rf /var/lib/apt/lists/*
