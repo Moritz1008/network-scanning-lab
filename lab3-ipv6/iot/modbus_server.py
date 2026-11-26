@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Minimal Modbus/TCP server for lab 3, stage 6. No dependencies.
+"""Minimal Modbus/TCP server for lab 3, bonus. No dependencies.
 
 Plays the CoolCorp cooling controller. Function codes:
   0x03/0x04 read holding/input registers
-  0x11      report slave ID     (what nmap's modbus-discover asks by default)
-  0x2B/0x0E read device identification (modbus-discover with aggressive=true)
-The flag (env FLAG_MODBUS) is stored as ASCII, two characters per register,
-starting at holding register 100 and padded with zeros.
+  0x11      report slave ID
+  0x2B/0x0E read device identification
+nmap's modbus-discover asks for both by default and prints them. The flag
+(env FLAG_MODBUS) sits in the device identification, object 0x06
+(UserApplicationName), so the NSE script alone shows it. A copy is also stored
+as ASCII in holding registers 100-131 (two characters per register, zero
+padded) for participants who want to try a real Modbus client; not required.
 """
 import os
 import socket
@@ -23,9 +26,10 @@ data = FLAG.ljust(FLAG_REGS * 2, b"\0")[:FLAG_REGS * 2]
 for k in range(FLAG_REGS):
     regs[FLAG_START + k] = (data[2 * k] << 8) | data[2 * k + 1]
 
-SLAVE_ID = (b"CoolCorp CoolCtl-Core cooling controller fw 2.1 - "
-            b"maintenance token in holding registers 100-131 (ASCII)")
-DEVICE_ID = [b"CoolCorp", b"CoolCtl-Core", b"2.1", b"https://coolcorp.invalid", b"CoolCtl-Core HQ cold room"]
+SLAVE_ID = b"CoolCorp CoolCtl-Core cooling controller fw 2.1"
+# Object ids 0x00-0x06 (basic + regular category), contiguous as modbus-discover expects.
+DEVICE_ID = [b"CoolCorp", b"CoolCtl-Core", b"2.1", b"https://coolcorp.invalid",
+             b"CoolCtl-Core HQ cold room", b"CC-Core-2", b"maintenance token: " + FLAG]
 
 
 def pdu_reply(fc, body):
@@ -40,7 +44,7 @@ def pdu_reply(fc, body):
         return bytes([fc, len(payload)]) + payload
     if fc == 0x2B and body[:1] == b"\x0e":
         objs = b"".join(bytes([i, len(v)]) + v for i, v in enumerate(DEVICE_ID))
-        return bytes([fc, 0x0E, 0x01, 0x01, 0x00, 0x00, len(DEVICE_ID)]) + objs
+        return bytes([fc, 0x0E, 0x01, 0x02, 0x00, 0x00, len(DEVICE_ID)]) + objs
     return bytes([fc | 0x80, 1])  # illegal function
 
 

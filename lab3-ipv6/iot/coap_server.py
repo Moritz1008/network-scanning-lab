@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal CoAP server (RFC 7252) for lab 3, stage 6. No dependencies.
+"""Minimal CoAP server (RFC 7252) for lab 3, bonus. No dependencies.
 
 Supports GET with piggybacked responses for CON and NON requests and the
 /.well-known/core discovery resource (RFC 6690), which nmap's
@@ -14,7 +14,7 @@ RESOURCES = {
     "sensors/temp": (0, "-18.2 C"),
     "sensors/humidity": (0, "41 %"),
     "sensors/door": (0, "closed"),
-    "maintenance/token": (0, "STAGE 6 CoAP FLAG: " + FLAG),
+    "maintenance/token": (0, "BONUS CoAP FLAG: " + FLAG),
 }
 CORE = ",".join([
     '</sensors/temp>;rt="temperature-c";ct=0',

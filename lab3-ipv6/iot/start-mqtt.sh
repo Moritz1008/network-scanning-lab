@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start the broker, then publish retained sensor values and the stage 6 flag.
+# Start the broker, then publish retained sensor values and the bonus flag.
 # Only our config: Debian's default one wants a pid file in /run/mosquitto.
 mosquitto -c /etc/mosquitto/conf.d/lab.conf &
 BROKER=$!
@@ -12,6 +12,6 @@ done
 mosquitto_pub -h ::1 -r -t coolcorp/hq/coldroom1/temp -m "-18.4"
 mosquitto_pub -h ::1 -r -t coolcorp/hq/coldroom2/temp -m "-21.0"
 mosquitto_pub -h ::1 -r -t coolcorp/hq/coldroom1/door -m "closed"
-mosquitto_pub -h ::1 -r -t coolcorp/hq/maintenance/token -m "STAGE 6 MQTT FLAG: $FLAG_MQTT"
+mosquitto_pub -h ::1 -r -t coolcorp/hq/maintenance/token -m "BONUS MQTT FLAG: $FLAG_MQTT"
 echo "[mqtt] broker up on [::]:1883, retained topics published"
 wait "$BROKER"

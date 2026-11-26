@@ -493,7 +493,7 @@ services:
     <<: *iot-device
     hostname: coolctl-core-hq
     environment:
-      FLAG_MODBUS: "FLAG{modbus_h0ld1ng_r3g1sters}"
+      FLAG_MODBUS: "FLAG{modbus_d3v1ce_1dent1ty}"
     command: [python3, /opt/iot/modbus_server.py]
     networks:
       corp:

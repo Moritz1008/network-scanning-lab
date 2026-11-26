@@ -263,19 +263,30 @@ i.e. your laptop).
 
 ## Bonus – Talk to the machines (3 flags)
 
-The other three IoT devices from stage 6 each speak their own protocol, and
-each one gives away a flag to anyone who asks. nmap has an NSE script for
-each one:
+The other three IoT devices from stage 6 each speak their own IoT protocol,
+and each one gives its flag to anyone who asks. You don't need to know the
+protocols: nmap has an NSE script for each of them that does the talking
+and prints the answer.
 
-| Device | Port | NSE script | Client |
-| --- | --- | --- | --- |
-| MQTT broker | 1883/tcp | `mqtt-subscribe` | `mosquitto_sub` |
-| CoAP sensor | 5683/udp | `coap-resources` | `coap-client-notls` |
-| Modbus controller | 502/tcp | `modbus-discover` | `mbpoll`, `python3` + `pymodbus` |
+1. Find out which device runs which service. Scan the three devices for TCP
+   **and** UDP: CoAP runs over UDP, and nmap scans only TCP by default.
+   Without UDP the CoAP device looks like it has no open ports.
 
-CoAP runs over **UDP**, and nmap scans only TCP by default. Without `-sU` the
-CoAP device looks like it has no open ports:
-`nmap -6 -sU -p5683 --script coap-resources <address>`.
+2. Run the matching NSE script against each device and read its output:
+
+   | Device | Port | NSE script |
+   | --- | --- | --- |
+   | MQTT broker | 1883/tcp | `mqtt-subscribe` |
+   | CoAP sensor | 5683/udp | `coap-resources` |
+   | Modbus controller | 502/tcp | `modbus-discover` |
+
+   The CoAP device needs a second look: the first run only lists what it
+   offers. The script takes an argument to fetch a single resource; NSE
+   scripts document their arguments in the `@args` lines of the script file
+   (`/usr/share/nmap/scripts/coap-resources.nse`).
+
+Want to try a real client? `mosquitto_sub`, `coap-client-notls` and
+`mbpoll` are installed in the attacker, but you don't need them for the flags.
 
 ---
 
